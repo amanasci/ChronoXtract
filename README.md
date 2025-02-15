@@ -20,12 +20,12 @@ pip install chronoxtract
 Here's a quick example to get you started:
 
 ```python
-import chronoxtract
+from chronoxtract import time_series_summary
 
-text = "The event starts at 3 PM on October 5th, 2023."
-time_data = chronoxtract.extract_time(text)
+a = [i for i in range(100000)]
 
-print(time_data)
+
+print(time_series_summary(a))
 ```
 
 ## Documentation
