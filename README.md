@@ -2,6 +2,8 @@
 
 ChronoXtract is a powerful library designed to extract features from your time series/sequential data.
 
+> Current version is V0.0.1
+
 ## Features Available
 
 - Calculates statistical features from the time series data.
