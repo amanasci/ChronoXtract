@@ -2,13 +2,13 @@ use rustfft::num_complex::Complex;
 use rustfft::FftPlanner;
 
 /// Performs FFT on the provided input signal using rustfft library.
-/// 
+///
 /// # Arguments
-/// 
+///
 /// * `input` - A slice of complex numbers representing the time domain signal.
-/// 
+///
 /// # Returns
-/// 
+///
 /// Returns a vector of complex numbers representing the frequency domain.
 pub fn perform_fft(input: &[Complex<f32>]) -> Vec<Complex<f32>> {
     // Create a plan for FFT computation

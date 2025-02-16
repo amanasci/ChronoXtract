@@ -68,5 +68,6 @@ fn chronoxtract(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(time_series_mean_median_mode, m)?)?;
     m.add_function(wrap_pyfunction!(time_series_summary, m)?)?;
     m.add_function(wrap_pyfunction!(fda::perform_fft_py, m)?)?;
+    m.add_function(wrap_pyfunction!(fda::lomb_scargle_py, m)?)?;
     Ok(())
 }
