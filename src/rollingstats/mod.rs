@@ -1,5 +1,4 @@
 use pyo3::prelude::*;
-use std::collections::HashMap;
 
 /// Computes the rolling mean over a sliding window.
 ///

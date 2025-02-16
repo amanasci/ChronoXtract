@@ -2,6 +2,7 @@ use pyo3::prelude::*;
 use pyo3::types::PyDict;
 mod rollingstats;
 mod stats;
+mod fda;
 
 #[pyfunction]
 fn time_series_summary<'py>(py: Python<'py>, time_series: Vec<f64>) -> PyResult<Py<PyDict>> {
@@ -66,6 +67,6 @@ fn time_series_mean_median_mode(time_series: Vec<f64>) -> PyResult<(f64, f64, f6
 fn chronoxtract(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(time_series_mean_median_mode, m)?)?;
     m.add_function(wrap_pyfunction!(time_series_summary, m)?)?;
-    
+    m.add_function(wrap_pyfunction!(fda::perform_fft_py, m)?)?;
     Ok(())
 }
