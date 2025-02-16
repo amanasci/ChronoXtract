@@ -2,7 +2,7 @@
 
 ChronoXtract is a powerful library designed to extract features from your time series/sequential data.
 
-> Current version is V0.0.1
+> Current version is V0.0.2 (Release pending)
 
 ## Features Available
 
@@ -33,14 +33,6 @@ print(time_series_summary(a))
 ## Documentation
 
 Coming Soon
-
-## Contributing
-
-We welcome contributions! Please see our [contributing guidelines](https://example.com/contributing) for more details.
-
-## License
-
-This project is licensed under the MIT License. See the [LICENSE](LICENSE) file for more information.
 
 ## Contact
 
