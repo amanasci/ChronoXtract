@@ -69,5 +69,10 @@ fn chronoxtract(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(time_series_summary, m)?)?;
     m.add_function(wrap_pyfunction!(fda::perform_fft_py, m)?)?;
     m.add_function(wrap_pyfunction!(fda::lomb_scargle_py, m)?)?;
+    m.add_function(wrap_pyfunction!(rollingstats::rolling_mean, m)?)?;
+    m.add_function(wrap_pyfunction!(rollingstats::rolling_variance, m)?)?;
+    m.add_function(wrap_pyfunction!(rollingstats::expanding_sum, m)?)?;
+    m.add_function(wrap_pyfunction!(rollingstats::exponential_moving_average, m)?)?;
+    m.add_function(wrap_pyfunction!(rollingstats::sliding_window_entropy, m)?)?;
     Ok(())
 }
