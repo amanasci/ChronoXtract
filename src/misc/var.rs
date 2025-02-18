@@ -1,0 +1,3 @@
+// To calculate:
+// Variability amplitude 
+

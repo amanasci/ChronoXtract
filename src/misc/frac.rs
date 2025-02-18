@@ -1,5 +1,3 @@
-use std::error::Error;
-
 // frac.rs
 // This program calculates the fractional variability of a lightcurve.
 // Fractional Variability (Fvar) is defined as:
@@ -72,4 +70,35 @@ pub fn fractional_variability_error(flux: &[f64], flux_err: &[f64]) -> Option<f6
     let fvar_err = (term1.powi(2) + term2.powi(2)).sqrt();
     
     Some(fvar_err)
+}
+
+/// Calculates the rolling fractional variability and its error over a specified window size.
+/// Returns a tuple of vectors (fvar_values, fvar_err_values) for each window.
+/// If the inputs are empty, lengths mismatch, window_size is zero, or the window_size is larger than the input length,
+/// the function returns None.
+pub fn rolling_fractional_variability(
+    flux: &[f64],
+    flux_err: &[f64],
+    window_size: usize,
+) -> Option<(Vec<f64>, Vec<f64>)> {
+    if flux.is_empty() || flux_err.len() != flux.len() || window_size == 0 || flux.len() < window_size {
+        return None;
+    }
+
+    let mut fvar_values = Vec::new();
+    let mut fvar_err_values = Vec::new();
+
+    for (flux_window, err_window) in flux.windows(window_size).zip(flux_err.windows(window_size)) {
+        // Compute fractional variability and its error for the current window.
+        // If the computation fails for any window, return None.
+        match (fractional_variability(flux_window, err_window), fractional_variability_error(flux_window, err_window)) {
+            (Some(fv), Some(err)) => {
+                fvar_values.push(fv);
+                fvar_err_values.push(err);
+            }
+            _ => return None,
+        }
+    }
+
+    Some((fvar_values, fvar_err_values))
 }
