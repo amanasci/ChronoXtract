@@ -80,5 +80,6 @@ fn chronoxtract(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(peaks::peak_prominence, m)?)?;
     m.add_function(wrap_pyfunction!(misc::fractional_variability, m)?)?;
     m.add_function(wrap_pyfunction!(misc::fractional_variability_error, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::rolling_fractional_variability, m)?)?;
     Ok(())
 }
