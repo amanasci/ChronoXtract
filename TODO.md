@@ -1,4 +1,5 @@
-# TODO 
+# TODO
+
 This is list of features to implement.
 
 ## Features to extract
@@ -13,3 +14,8 @@ This is list of features to implement.
     - [ ] Anomaly detection
     - [ ] Time series decomposition
     - [ ] Data interpolation methods
+
+## TOP PRIORITY
+
+- [ ] Add documentation. With examples.
+- [ ] Create a seperate weekly report.
