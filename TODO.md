@@ -13,7 +13,7 @@ This is list of features to implement.
     - [ ] Trend analysis
     - [ ] Anomaly detection
     - [ ] Time series decomposition
-    - [ ] Data interpolation methods
+    - [ ] Add a textual summary function based on stats.
 
 ## TOP PRIORITY
 
