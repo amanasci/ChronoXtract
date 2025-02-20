@@ -1,4 +1,5 @@
 mod frac;
+mod var;
 
 use pyo3::prelude::*;
 
@@ -25,4 +26,14 @@ pub fn rolling_fractional_variability(
         Some((variability, _error)) => Ok(variability.into_iter().map(Some).collect()),
         None => Ok(Vec::new())
     }
+}
+
+#[pyfunction]
+#[pyo3(signature = (time,flux,flux_err))]
+pub fn calc_variability_timescale(
+    time: Vec<f64>,
+    flux: Vec<f64>,
+    flux_err: Vec<f64>,
+) -> PyResult<Option<f64>> {
+    Ok(var::calc_variability_timescale(&time, &flux, &flux_err))
 }
