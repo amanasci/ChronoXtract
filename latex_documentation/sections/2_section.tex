@@ -1,0 +1,49 @@
+{\color{gray}\hrule}
+\begin{center}
+\section{Statistical Features}
+% \textbf{You can add small descriptions of what the current sections describe}
+\bigskip
+\end{center}
+{\color{gray}\hrule}
+Here, we discuss the list of statistical features extracted by the ChronoXtract package. 
+% \begin{multicols}{2}
+\subsection{Mean}
+The mean (or average) represents the central tendency of the time series data. It provides a single value summarizing the overall magnitude of the dataset. Mean is given by: 
+\begin{equation}
+    \mu = \frac{1}{N} \sum_{i=1}^{N} x_i
+    \label{eq:mean}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Sum all elements in the time series vector.
+    \item Divide the sum by the length of the vector.
+\end{enumerate}
+
+
+\subsection{Median}
+The median is the middle value of a sorted dataset. It is robust to outliers and provides a measure of central tendency that is less sensitive to extreme values than the mean.
+\begin{equation}
+   \text{Median} =
+   \begin{cases} 
+   \dfrac{n+1}{2}, & \text{if } n \text{ is odd} \\ 
+   \dfrac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2}, & \text{if } n \text{ is even}
+   \end{cases}
+   \label{eq:median_expression}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Sort the vector.
+    \item Compute the median based on whether the length of the vector is odd or even.
+\end{enumerate}
+
+\subsection{Mode}
+The mode is the most frequently occurring value in the dataset. It is useful for identifying dominant patterns or trends in categorical or discrete numerical data.
+
+\begin{equation}
+    
+\end{equation}
+
+
+% \end{multicols}
