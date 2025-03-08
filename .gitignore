@@ -70,3 +70,13 @@ docs/_build/
 
 # Pyenv
 .python-version
+
+#Latex
+*.aux
+*.bbl
+*.blg
+*.log
+*.out
+*.fdb_latexmk
+*.fls
+*.synctex.gz
