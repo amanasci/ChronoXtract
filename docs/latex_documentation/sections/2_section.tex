@@ -1,0 +1,166 @@
+{\color{gray}\hrule}
+\begin{center}
+\section{Statistical Features}
+% \textbf{You can add small descriptions of what the current sections describe}
+\bigskip
+\end{center}
+{\color{gray}\hrule}
+Here, we discuss the list of statistical features extracted by the ChronoXtract package. 
+% \begin{multicols}{2}
+\subsection{Mean}
+The mean (or average) represents the central tendency of the time series data. It provides a single value summarizing the overall magnitude of the dataset. Mean is given by: 
+\begin{equation}
+    \mu = \frac{1}{N} \sum_{i=1}^{N} x_i
+    \label{eq:mean}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Sum all elements in the time series vector.
+    \item Divide the sum by the length of the vector.
+\end{enumerate}
+
+
+\subsection{Median}
+The median is the middle value of a sorted dataset. It is robust to outliers and provides a measure of central tendency that is less sensitive to extreme values than the mean.
+\begin{equation}
+   \text{Median} =
+   \begin{cases} 
+   \dfrac{n+1}{2}, & \text{if } n \text{ is odd} \\ 
+   \dfrac{x_{\frac{n}{2}} + x_{\frac{n}{2} + 1}}{2}, & \text{if } n \text{ is even}
+   \end{cases}
+   \label{eq:median_expression}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Sort the vector.
+    \item Compute the median based on whether the length of the vector is odd or even.
+\end{enumerate}
+
+\subsection{Mode}
+The mode is the most frequently occurring value in the dataset. It is useful for identifying dominant patterns or trends in categorical or discrete numerical data.
+\begin{equation}
+    \text{Mode} = \text{arg} \text{max} \{ \text{count}(x_i) \}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Use a HashMap to count occurrences of each value in the time series. 
+    \item Iterate through the HashMap to find the key with the maximum count.
+\end{enumerate}
+
+\subsection{Variance}
+Variance measures the spread or dispersion of the data around the mean. A higher variance indicates greater variability in the dataset.
+
+\begin{equation}
+    \sigma^2 = \dfrac{1}{N} \sum_{i=1}^{N} (x_i - \mu)^2
+    \label{eq:variance}
+\end{equation}
+
+here $\mu$ is the mean of the dataset.
+
+Algorithm:
+\begin{enumerate}
+    \item Compute the mean of the time series.
+    \item Calculate the squared difference between each element and the mean.
+    \item Sum the squared differences and divide by the length of the vector.
+\end{enumerate}
+
+\subsection{Standard Deviation}
+Standard deviation is the square root of the variance. It provides a measure of the dispersion of the data around the mean. A higher standard deviation indicates greater variability in the dataset.
+
+\begin{equation}
+    \sigma = \sqrt{\sigma^2}
+    \label{eq:std_dev}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Compute the variance of the time series.
+    \item Take the square root of the variance.
+\end{enumerate}
+
+\subsection{Skewness}
+Skewness measures the asymmetry of the dataset. A positive skewness indicates a longer tail on the right side of the distribution, while a negative skewness indicates a longer tail on the left side.
+
+\begin{equation}
+    \text{Skewness} = \dfrac{\dfrac{1}{N} \sum_{i=1}^{N} (x_i - \mu)^3}{\sigma^3}
+    \label{eq:skewness}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Compute the mean and standard deviation of the time series.
+    \item Calculate the skewness using the formula above.
+\end{enumerate}
+
+\subsection{Kurtosis}
+Kurtosis measures the tailedness of the dataset. A higher kurtosis indicates heavier tails in the distribution, while a lower kurtosis indicates lighter tails.
+
+\begin{equation}
+    \text{Kurtosis} = \dfrac{\dfrac{1}{N} \sum_{i=1}^{N} (x_i - \mu)^4}{\sigma^4}
+    \label{eq:kurtosis}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Compute the mean and standard deviation of the time series.
+    \item Calculate the kurtosis using the formula above.
+\end{enumerate}
+
+\subsection{Min Max Range}
+The min-max range is the difference between the maximum and minimum values in the dataset. It provides a measure of the spread of the data.
+
+\begin{equation}
+    \text{min-max range} = \text{max}(x) - \text{min}(x)
+    \label{eq:min_max_range}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Find the maximum and minimum values in the time series.
+    \item Calculate the difference between the maximum and minimum values.
+\end{enumerate}
+
+\subsection{Quantiles}
+Quantiles divide the dataset into equal parts. The median is the 50th percentile, while the quartiles divide the dataset into four equal parts. Quantiles provide a measure of the spread and distribution of the data.
+
+Algorithm:
+\begin{enumerate}
+    \item Sort the time series.
+    \item Calculate the quantiles based on the desired percentage.
+\end{enumerate}
+
+\subsection{Sum}
+The sum of the dataset provides a measure of the total magnitude of the data.
+
+\begin{equation}
+    \text{Sum} = \sum_{i=1}^{N} x_i
+    \label{eq:sum}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Sum all elements in the time series vector.
+\end{enumerate}
+
+\subsection{Absolute Energy}
+Absolute energy is the sum of the squared values in the dataset. It provides a measure of the total energy in the data.
+
+\begin{equation}
+    \text{Absolute Energy} = \sum_{i=1}^{N} x_i^2
+    \label{eq:absolute_energy}
+\end{equation}
+
+Algorithm:
+\begin{enumerate}
+    \item Square each element in the time series.
+    \item Sum the squared values.
+\end{enumerate}
+
+
+
+
+
+% \end{multicols}

@@ -72,7 +72,7 @@ pub fn calculate_kurtosis(time_series: Vec<f64>) -> PyResult<f64> {
     
     let kurtosis = time_series.iter()
         .map(|x| ((x - mean) / std_dev).powi(4))
-        .sum::<f64>() / n - 3.0; // Excess Kurtosis
+        .sum::<f64>() / n; //- 3.0; // Excess Kurtosis
     Ok(kurtosis)
 }
 
