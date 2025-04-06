@@ -1,15 +1,54 @@
 {\color{gray}\hrule}
 \begin{center}
-\section{Section}
-\textbf{Small description}
+\section{Frequency Domain Features}
 \bigskip
 \end{center}
 {\color{gray}\hrule}
-\begin{multicols}{2}
-\subsection{Subsection}
-\lipsum[1-3]
-\subsection{Subsection}
-\lipsum[1-2]
-\end{multicols}
+% \begin{multicols}{2}
+Here, we discuss the list of frequency domain features extracted by the ChronoXtract package. 
+\subsection{Fourier Transform}
+The Fourier Transform is a mathematical technique that transforms a time-domain signal into its frequency-domain representation. It decomposes a signal into its constituent frequencies, allowing us to analyze the frequency content of the signal. 
+The Fourier Transform is widely used in various fields, including signal processing, image analysis, and data compression.
+
+\begin{equation}
+X(f) = \int_{-\infty}^{\infty} x(t) e^{-j2\pi ft} dt
+\end{equation}
+
+Where:
+\begin{itemize}
+    \item \(X(f)\) is the Fourier Transform of the signal \(x(t)\)
+    \item \(f\) is the frequency
+    \item \(t\) is time
+    \item \(j\) is the imaginary unit
+    \item \(e\) is the base of the natural logarithm
+    \item \(\pi\) is the mathematical constant pi
+    \item \(dt\) is the differential element of time
+\end{itemize}
+The Fourier Transform can be computed using the Fast Fourier Transform (FFT) algorithm, which is an efficient way to calculate the Fourier Transform of a discrete signal. The FFT algorithm reduces the computational complexity from \(O(N^2)\) to \(O(N \log N)\), making it suitable for real-time applications.
+
+FFT Algorithm:
+\begin{enumerate}
+    \item Check if the length of the input sequence is a power of 2. If not, pad with zeros to the next power of 2.
+    \item Base case: If the input sequence has length 1, its FFT is itself.
+    \item Divide the input sequence into two subsequences:
+        \begin{enumerate}
+            \item Even-indexed elements: $x[0], x[2], x[4], \ldots$
+            \item Odd-indexed elements: $x[1], x[3], x[5], \ldots$
+        \end{enumerate}
+    \item Recursively compute the FFT of the even-indexed subsequence.
+    \item Recursively compute the FFT of the odd-indexed subsequence.
+    \item Combine the results using the butterfly operation:
+        \begin{enumerate}
+            \item For $k = 0$ to $N/2-1$:
+                \begin{enumerate}
+                    \item $X[k] = E[k] + e^{-j2\pi k/N} \cdot O[k]$
+                    \item $X[k+N/2] = E[k] - e^{-j2\pi k/N} \cdot O[k]$
+                \end{enumerate}
+        \end{enumerate}
+    \item Return the combined array $X$, which is the FFT of the original sequence.
+\end{enumerate}
+
+Where $E[k]$ is the $k$-th element of the FFT of even-indexed elements, and $O[k]$ is the $k$-th element of the FFT of odd-indexed elements.
+
 
 
