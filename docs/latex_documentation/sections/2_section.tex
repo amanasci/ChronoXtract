@@ -159,8 +159,102 @@ Algorithm:
     \item Sum the squared values.
 \end{enumerate}
 
+\subsection{Rolling Mean}
+The rolling mean (or moving average) is the average of a specified number of previous values in the dataset. It provides a smoothed version of the time series data.
+\begin{equation}
+    \text{Rolling Mean} = \dfrac{1}{N} \sum_{i=t-N+1}^{t} x_i
+    \label{eq:rolling_mean}
+\end{equation}
 
+Algorithm:
+\begin{enumerate}
+    \item Initialize a window of size N.
+    \item For each time step t, calculate the mean of the previous N values.
+    \item Slide the window one step forward and repeat.
+    \item Continue until the end of the time series is reached.
+    \item Return the rolling mean values.
+\end{enumerate}
 
+\subsection{Rolling Variance}
+The rolling variance is the variance of a specified number of previous values in the dataset. It provides a measure of the variability of the data over time.
+\begin{equation}
+    \text{Rolling Variance} = \dfrac{1}{N} \sum_{i=t-N+1}^{t} (x_i - \mu)^2
+    \label{eq:rolling_variance}
+\end{equation}
+Algorithm:
+\begin{enumerate}
+    \item Initialize a window of size N.
+    \item For each time step t, calculate the variance of the previous N values.
+    \item Slide the window one step forward and repeat.
+    \item Continue until the end of the time series is reached.
+    \item Return the rolling variance values.
+\end{enumerate}
 
+\subsection{Expanding Sum}
+The expanding sum is the cumulative sum of the dataset up to the current time step. It provides a measure of the total magnitude of the data over time.
+\begin{equation}
+    \text{Expanding Sum} = \sum_{i=1}^{t} x_i
+    \label{eq:expanding_sum}
+\end{equation}
 
-% \end{multicols}
+Algorithm:
+\begin{enumerate}
+    \item Initialize a variable to store the cumulative sum.
+    \item For each time step t, add the current value to the cumulative sum.
+    \item Continue until the end of the time series is reached.
+    \item Return the expanding sum values.
+\end{enumerate}
+
+\subsection{Exponential Moving Average}
+The exponential moving average (EMA) is a weighted average of the previous values in the dataset, where more recent values have a higher weight. It provides a smoothed version of the time series data that reacts more quickly to recent changes.
+\begin{equation}
+    \text{EMA}_t = \alpha x_t + (1 - \alpha) \text{EMA}_{t-1}
+    \label{eq:ema}
+\end{equation}
+where $\alpha$ is the smoothing factor, typically set to $\frac{2}{N+1}$, where N is the window size.
+
+Algorithm:
+\begin{enumerate}
+    \item Initialize the EMA with the first value of the time series.
+    \item For each subsequent time step t, calculate the EMA using the formula above.
+    \item Continue until the end of the time series is reached.
+    \item Return the EMA values.
+\end{enumerate}
+
+\subsection{Sliding Window Entropy}
+Sliding window entropy is a measure of the complexity or uncertainty of the dataset over a specified window size. It provides a measure of the information content in the data.
+\begin{equation}
+    \text{Entropy} = -\sum_{i=1}^{N} p_i \log(p_i)
+    \label{eq:entropy}
+\end{equation}
+where $p_i$ is the probability of each value in the dataset.
+
+Algorithm:
+\begin{enumerate}
+    \item Initialize an empty vector to store entropy values.
+    \item Validate inputs: return empty vector if window size is 0, window size exceeds series length, or bins is 0.
+    \item For each position i from 0 to (n - window):
+        \begin{enumerate}
+            \item Extract a slice of the series from i to i + window.
+            \item Find the minimum and maximum values in the window slice.
+            \item Calculate the range (max\_value - min\_value).
+            \item If the range equals 0, add 0.0 to the entropy vector and continue to the next iteration.
+            \item Otherwise:
+                \begin{enumerate}
+                    \item Initialize a histogram with 'bins' number of bins, each set to 0.
+                    \item For each value in the window:
+                        \begin{enumerate}
+                            \item Determine which bin the value belongs to using the formula: bin = floor((value - min\_value) / range * bins).
+                            \item Ensure the bin index doesn't exceed the number of bins.
+                            \item Increment the count for that bin.
+                        \end{enumerate}
+                    \item Calculate entropy as follows:
+                        \begin{enumerate}
+                            \item For each bin with count $> 0$, calculate probability $p = count / window\_size$.
+                            \item Sum up $(-p * \ln(p))$ for all bins with counts $> 0$.
+                        \end{enumerate}
+                    \item Add the calculated entropy value to the entropy vector.
+                \end{enumerate}
+        \end{enumerate}
+    \item Return the vector of entropy values.
+\end{enumerate}

@@ -11,3 +11,8 @@
 \contentsline {subsection}{\numberline {2.9}Quantiles}{4}{subsection.2.9}%
 \contentsline {subsection}{\numberline {2.10}Sum}{4}{subsection.2.10}%
 \contentsline {subsection}{\numberline {2.11}Absolute Energy}{4}{subsection.2.11}%
+\contentsline {subsection}{\numberline {2.12}Rolling Mean}{5}{subsection.2.12}%
+\contentsline {subsection}{\numberline {2.13}Rolling Variance}{5}{subsection.2.13}%
+\contentsline {subsection}{\numberline {2.14}Expanding Sum}{5}{subsection.2.14}%
+\contentsline {subsection}{\numberline {2.15}Exponential Moving Average}{6}{subsection.2.15}%
+\contentsline {subsection}{\numberline {2.16}Sliding Window Entropy}{6}{subsection.2.16}%
