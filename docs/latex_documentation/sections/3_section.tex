@@ -6,6 +6,7 @@
 {\color{gray}\hrule}
 % \begin{multicols}{2}
 Here, we discuss the list of frequency domain features extracted by the ChronoXtract package. 
+
 \subsection{Fourier Transform}
 The Fourier Transform is a mathematical technique that transforms a time-domain signal into its frequency-domain representation. It decomposes a signal into its constituent frequencies, allowing us to analyze the frequency content of the signal. 
 The Fourier Transform is widely used in various fields, including signal processing, image analysis, and data compression.
@@ -50,5 +51,64 @@ FFT Algorithm:
 
 Where $E[k]$ is the $k$-th element of the FFT of even-indexed elements, and $O[k]$ is the $k$-th element of the FFT of odd-indexed elements.
 
+\subsection{Lomb Scargle Periodogram}
+The Lomb-Scargle periodogram is a method for detecting periodic signals in unevenly sampled data. It is particularly useful in astronomy and other fields where data may be collected at irregular intervals. The Lomb-Scargle periodogram estimates the power spectral density of a signal, allowing us to identify the dominant frequencies present in the data.
+The Lomb-Scargle periodogram is defined as:
 
+Given:
 
+\begin{enumerate}
+    \item A set of observation times \(t_i\)
+    \item Corresponding measurements \(y_i\)
+    \item A range of frequencies \(f\)
+\end{enumerate}
+
+The angular frequency is:
+
+$$
+\omega = 2\pi f
+$$
+
+Tau \(\tau\) is:
+
+$$
+\tau = \frac{1}{2\omega} \tan^{-1} \left( \frac{\sum_i \sin(2\omega t_i)}{\sum_i \cos(2\omega t_i)} \right)
+$$
+
+Step 2: Compute sums for sine and cosine components
+
+Define:
+
+$$
+\phi_i = \omega (t_i - \tau)
+$$
+
+Then compute:
+
+$$
+\sum y_i \cos(\phi_i), \quad \sum y_i \sin(\phi_i), \quad \sum \cos^2(\phi_i), \quad \sum \sin^2(\phi_i)
+$$
+
+Step 3: Compute the Lomb-Scargle power
+
+The normalized power at frequency \(f\) is:
+
+$$
+P(f) = \frac{1}{2} \left( \frac{\left(\sum y_i \cos(\phi_i)\right)^2}{\sum \cos^2(\phi_i)} + \frac{\left(\sum y_i \sin(\phi_i)\right)^2}{\sum \sin^2(\phi_i)} \right)
+$$
+
+Lomb-Scargle assumes your data can be approximated by a sinusoidal model:
+$$
+y(t) = A \cos(\omega t ) + B \sin(\omega t) + \epsilon
+$$
+Where:
+\begin{itemize}
+    \item \(y(t)\) is the observed data
+    \item \(A\) and \(B\) are the amplitudes of the cosine and sine components
+    \item \(\omega\) is the angular frequency
+    \item \(\epsilon\) is the noise term
+\end{itemize}
+
+Rather than directly estimating A and B, it analytically calculates how well sine and cosine functions of each frequency explain the observed data.
+
+The $\tau$ parameter corrects for phase shifts caused by uneven sampling, making the periodogram invariant to time translation. This ensures that the result depends only on the frequency content of the data, not on the arbitrary choice of time zero.
