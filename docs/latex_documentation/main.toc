@@ -16,6 +16,8 @@
 \contentsline {subsection}{\numberline {2.14}Expanding Sum}{6}{subsection.2.14}%
 \contentsline {subsection}{\numberline {2.15}Exponential Moving Average}{6}{subsection.2.15}%
 \contentsline {subsection}{\numberline {2.16}Sliding Window Entropy}{6}{subsection.2.16}%
-\contentsline {section}{\numberline {3}Frequency Domain Features}{7}{section.3}%
-\contentsline {subsection}{\numberline {3.1}Fourier Transform}{7}{subsection.3.1}%
-\contentsline {subsection}{\numberline {3.2}Lomb Scargle Periodogram}{8}{subsection.3.2}%
+\contentsline {subsection}{\numberline {2.17}Fractional Variability}{7}{subsection.2.17}%
+\contentsline {subsection}{\numberline {2.18}Minimum Variability Timescale}{8}{subsection.2.18}%
+\contentsline {section}{\numberline {3}Frequency Domain Features}{9}{section.3}%
+\contentsline {subsection}{\numberline {3.1}Fourier Transform}{9}{subsection.3.1}%
+\contentsline {subsection}{\numberline {3.2}Lomb Scargle Periodogram}{10}{subsection.3.2}%

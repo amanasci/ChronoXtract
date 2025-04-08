@@ -258,3 +258,62 @@ Algorithm:
         \end{enumerate}
     \item Return the vector of entropy values.
 \end{enumerate}
+
+\subsection{Fractional Variability}
+Fractional variability is a measure of the variability of the dataset relative to its mean. It provides a normalized measure of the spread of the data.
+\begin{equation}
+    \text{Fractional Variability} = \dfrac{\sigma}{\mu}
+    \label{eq:fractional_variability}
+\end{equation}
+
+ For real world data where there is an associated uncertainty with each data point, the fractional variability is given by:
+\begin{equation}
+    Fvar = \sqrt{(S² - \langle\sigma_{err}²\rangle)} / \langle x \rangle
+    \label{eq:fractional_variability_real}
+\end{equation}
+where $\sigma_{err}$ is the uncertainty associated with each data point $x_i$.
+Algorithm:
+\begin{enumerate}
+    \item Compute the mean and standard deviation of the time series.
+    \item Calculate the fractional variability using the formula above.
+    \item If the time series has associated uncertainties, compute the fractional variability using the second formula.
+\end{enumerate}
+
+\subsection{Minimum Variability Timescale}
+Minimum variability timescale is a measure of the shortest timescale over which the dataset exhibits significant variability. It provides insight into the temporal characteristics of the data.
+
+The variability timescale quantifies how rapidly a signal changes over time, providing a characteristic timescale for variation in time series data.
+
+The variability timescale ($\tau$) is calculated from adjacent pairs of measurements using:
+
+\begin{equation} \tau = \frac{\Delta t}{|\ln(f_2/f_1)|} \end{equation}
+
+where:
+\begin{itemize}
+    \item \(f_1\) and \(f_2\) are the two adjacent measurements.
+    \item \(\Delta t\) is the time difference between the two measurements.
+\end{itemize}
+The minimum variability timescale is the minimum value of $\tau$ calculated from all adjacent pairs of measurements in the time series.
+
+Algorithm:
+
+\begin{enumerate}
+    \item Validate input: ensure time, flux, and flux error arrays each contain at least 2 elements 
+    \item For each adjacent pair of measurements $(i,\, i+1)$: 
+        \begin{enumerate}
+            \item Calculate time difference: $dt = time[i+1] - time[i]$
+            \item Skip if $dt \le 0$ (ensuring time increases)
+            \item Skip if either flux value is non-positive (requirement for logarithm)
+            \item Calculate flux ratio: $\frac{f_2}{f_1}$
+            \item Calculate absolute logarithmic difference: $|\ln(f_2/f_1)|$
+            \item Skip if no variability is detected ($|\ln(f_2/f_1)| = 0$)
+            \item Calculate combined measurement error: $\sqrt{error_1^2 + error_2^2}$
+            \item Skip if flux difference is less than combined error (statistically insignificant)
+            \item Calculate $\tau = \frac{dt}{|\ln(f_2/f_1)|}$
+            \item Update minimum $\tau$ if this is the smallest value found
+        \end{enumerate}
+    \item Return the minimum $\tau$ value as the characteristic variability timescale
+\end{enumerate}
+
+Only flux changes that are statistically significant (i.e., the absolute difference between flux measurements exceeds the combined measurement error) 
+are considered when calculating the variability timescale. This ensures that the calculated timescale reflects genuine signal variations rather than measurement noise.\\
