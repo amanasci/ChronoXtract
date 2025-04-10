@@ -14,7 +14,7 @@ pub fn perform_fft_py(py: Python, input: Vec<f64>) -> PyResult<Py<PyList>> {
 
     // Call the FFT function from fft.rs.
     // let output = fft::perform_fft(&input_complex);
-    let output = fft::fft_from_scratch(&input_complex);
+    let output = fft::perform_fft(&input_complex);
 
     // Create an empty Python list.
     let py_list = PyList::empty(py);
