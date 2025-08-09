@@ -17,5 +17,38 @@ This is list of features to implement.
 
 ## TOP PRIORITY
 
-- [ ] Add documentation. With examples.
-- [ ] Create a seperate weekly report.
+- [X] Add documentation. With examples.
+  - [X] Enhanced README.md with comprehensive feature overview
+  - [X] API Reference documentation with detailed function descriptions
+  - [X] User Guide with tutorials and best practices
+  - [X] Examples Gallery with practical use cases
+  - [X] Contributing guidelines for developers
+  - [X] License and Changelog files
+- [ ] Create a separate weekly report.
+
+## DOCUMENTATION COMPLETED ✅
+
+- [X] **API Reference** (`docs/api_reference.md`)
+  - Detailed documentation for all functions
+  - Parameter descriptions and return types
+  - Comprehensive examples for each function
+  - Error handling information
+
+- [X] **User Guide** (`docs/user_guide.md`)
+  - Getting started tutorial
+  - Core concepts explanation
+  - Best practices and performance tips
+  - Real-world application examples
+
+- [X] **Examples Gallery** (`docs/examples/`)
+  - Basic statistics examples
+  - Rolling statistics demonstrations
+  - Frequency analysis tutorials
+  - Variability analysis examples
+  - Integration examples with pandas/numpy
+
+- [X] **Project Documentation**
+  - Enhanced README.md with feature showcase
+  - Contributing guidelines (CONTRIBUTING.md)
+  - MIT License (LICENSE)
+  - Changelog (CHANGELOG.md)
