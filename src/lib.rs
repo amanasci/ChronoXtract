@@ -6,6 +6,7 @@ mod fda;
 mod peaks;
 mod misc;
 
+
 #[pyfunction]
 fn time_series_summary<'py>(py: Python<'py>, time_series: Vec<f64>) -> PyResult<Py<PyDict>> {
     let summary = PyDict::new(py);
@@ -76,8 +77,8 @@ fn chronoxtract(m: &Bound<'_, PyModule>) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(rollingstats::expanding_sum, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::exponential_moving_average, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::sliding_window_entropy, m)?)?;
-    // m.add_function(wrap_pyfunction!(peaks::find_peaks, m)?)?;
-    // m.add_function(wrap_pyfunction!(peaks::peak_prominence, m)?)?;
+    m.add_function(wrap_pyfunction!(peaks::find_peaks, m)?)?;
+    m.add_function(wrap_pyfunction!(peaks::peak_prominence, m)?)?;
     m.add_function(wrap_pyfunction!(misc::fractional_variability, m)?)?;
     m.add_function(wrap_pyfunction!(misc::fractional_variability_error, m)?)?;
     m.add_function(wrap_pyfunction!(misc::rolling_fractional_variability, m)?)?;
