@@ -18,11 +18,14 @@ pub fn fractional_variability(flux: &[f64], flux_err: &[f64]) -> Option<f64> {
         return None;
     }
     
+    if n < 2.0 {
+        return None;
+    }
     let variance = flux
         .iter()
         .map(|x| (x - mean_flux).powi(2))
         .sum::<f64>()
-        / n;
+        / (n - 1.0);
     let mean_err_sq = flux_err
         .iter()
         .map(|e| e.powi(2))
@@ -49,10 +52,13 @@ pub fn fractional_variability_error(flux: &[f64], flux_err: &[f64]) -> Option<f6
         return None;
     }
     
+    if n < 2.0 {
+        return None;
+    }
     let variance = flux
         .iter()
         .map(|x| (x - mean_flux).powi(2))
-        .sum::<f64>() / n;
+        .sum::<f64>() / (n - 1.0);
     let mean_err_sq = flux_err
         .iter()
         .map(|e| e.powi(2))

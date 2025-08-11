@@ -1,14 +1,21 @@
 use std::collections::HashMap;
 use pyo3::prelude::*;
+use pyo3::exceptions::PyValueError;
 
 #[pyfunction]
 pub fn calculate_mean(time_series: Vec<f64>) -> PyResult<f64> {
+    if time_series.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
     let mean = time_series.iter().sum::<f64>() / time_series.len() as f64;
     Ok(mean)
 }
 
 #[pyfunction]
 pub fn calculate_median(time_series: Vec<f64>) -> PyResult<f64> {
+    if time_series.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
     let mut sorted = time_series.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let mid = sorted.len() / 2;
@@ -22,6 +29,9 @@ pub fn calculate_median(time_series: Vec<f64>) -> PyResult<f64> {
 
 #[pyfunction]
 pub fn calculate_mode(time_series: Vec<f64>) -> PyResult<f64> {
+    if time_series.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
     let mut counts = HashMap::new();
     for &value in &time_series {
         *counts.entry(value.to_bits()).or_insert(0) += 1;
@@ -39,6 +49,9 @@ pub fn calculate_mode(time_series: Vec<f64>) -> PyResult<f64> {
 
 #[pyfunction]
 pub fn calculate_variance(time_series: Vec<f64>) -> PyResult<f64> {
+    if time_series.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
     let mean = calculate_mean(time_series.clone())?;
     let variance = time_series.iter()
         .map(|x| (x - mean).powi(2))
@@ -54,10 +67,17 @@ pub fn calculate_std_dev(time_series: Vec<f64>) -> PyResult<f64> {
 
 #[pyfunction]
 pub fn calculate_skewness(time_series: Vec<f64>) -> PyResult<f64> {
+    if time_series.len() < 2 {
+        return Err(PyValueError::new_err("Skewness requires at least 2 data points"));
+    }
     let mean = calculate_mean(time_series.clone())?;
     let std_dev = calculate_std_dev(time_series.clone())?;
     let n = time_series.len() as f64;
     
+    if std_dev == 0.0 {
+        return Ok(0.0);
+    }
+
     let skewness = time_series.iter()
         .map(|x| ((x - mean) / std_dev).powi(3))
         .sum::<f64>() / n;
@@ -66,18 +86,28 @@ pub fn calculate_skewness(time_series: Vec<f64>) -> PyResult<f64> {
 
 #[pyfunction]
 pub fn calculate_kurtosis(time_series: Vec<f64>) -> PyResult<f64> {
+    if time_series.len() < 2 {
+        return Err(PyValueError::new_err("Kurtosis requires at least 2 data points"));
+    }
     let mean = calculate_mean(time_series.clone())?;
     let std_dev = calculate_std_dev(time_series.clone())?;
     let n = time_series.len() as f64;
     
+    if std_dev == 0.0 {
+        return Ok(0.0);
+    }
+
     let kurtosis = time_series.iter()
         .map(|x| ((x - mean) / std_dev).powi(4))
-        .sum::<f64>() / n; //- 3.0; // Excess Kurtosis
-    Ok(kurtosis)
+        .sum::<f64>() / n;
+    Ok(kurtosis - 3.0) // Return excess kurtosis
 }
 
 #[pyfunction]
 pub fn calculate_min_max_range(time_series: Vec<f64>) -> PyResult<(f64, f64, f64)> {
+    if time_series.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
     let min = *time_series.iter().min_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
     let max = *time_series.iter().max_by(|a, b| a.partial_cmp(b).unwrap()).unwrap();
     let range = max - min;
@@ -86,6 +116,9 @@ pub fn calculate_min_max_range(time_series: Vec<f64>) -> PyResult<(f64, f64, f64
 
 #[pyfunction]
 pub fn calculate_quantiles(time_series: Vec<f64>) -> PyResult<Vec<f64>> {
+    if time_series.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
     let mut sorted = time_series.clone();
     sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
     let n = sorted.len();

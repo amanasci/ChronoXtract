@@ -132,7 +132,7 @@ pub fn sliding_window_entropy(series: Vec<f64>, window: usize, bins: usize) -> P
         for &count in &counts {
             if count > 0 {
                 let p = count as f64 / total;
-                entropy -= p * p.ln();
+                entropy -= p * p.log2();
             }
         }
         entropies.push(entropy);
