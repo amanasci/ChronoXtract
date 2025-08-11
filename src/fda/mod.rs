@@ -1,48 +1,38 @@
 use pyo3::prelude::*;
-use pyo3::types::{PyFloat, PyList};
+use numpy::{PyReadonlyArray1, PyArray1};
 use rustfft::num_complex::Complex;
+use numpy::Complex64;
+
 mod fft;
 mod lombscargle;
 
 #[pyfunction]
-pub fn perform_fft_py(py: Python, input: Vec<f64>) -> PyResult<Py<PyList>> {
+pub fn perform_fft_py(py: Python, input: PyReadonlyArray1<f64>) -> PyResult<Py<PyArray1<Complex64>>> {
+    let input_array = input.as_array();
+
     // Convert the input into Complex numbers.
-    let input_complex: Vec<Complex<f32>> = input
-        .into_iter()
-        .map(|x| Complex::new(x as f32, 0.0))
+    let input_complex: Vec<Complex<f32>> = input_array
+        .iter()
+        .map(|&x| Complex::new(x as f32, 0.0))
         .collect();
 
     // Call the FFT function from fft.rs.
-    // let output = fft::perform_fft(&input_complex);
     let output = fft::perform_fft(&input_complex);
 
-    // Create an empty Python list.
-    let py_list = PyList::empty(py);
+    // Convert the result to Complex64 for numpy
+    let output_complex64: Vec<Complex64> = output.iter().map(|c| Complex64::new(c.re as f64, c.im as f64)).collect();
 
-    // Directly convert each FFT output into a Python complex number.
-    for c in output.iter() {
-        // Replace PyComplex::new with Python's built-in complex constructor.
-        let complex_cstr = std::ffi::CStr::from_bytes_with_nul(b"complex\0").expect("CStr creation failed");
-        let py_complex = py.eval(complex_cstr, None, None)?.call1((c.re as f64, c.im as f64))?;
-        py_list.append(py_complex)?;
-    }
-
-    Ok(py_list.into())
+    Ok(PyArray1::from_vec(py, output_complex64).to_owned())
 }
 
 #[pyfunction]
-pub fn lomb_scargle_py(py: Python, t: Vec<f64>, y: Vec<f64>, freqs: Vec<f64>) -> PyResult<Py<PyList>> {
+pub fn lomb_scargle_py(py: Python, t: PyReadonlyArray1<f64>, y: PyReadonlyArray1<f64>, freqs: PyReadonlyArray1<f64>) -> PyResult<Py<PyArray1<f64>>> {
+    let t_array = t.as_array();
+    let y_array = y.as_array();
+    let freqs_array = freqs.as_array();
+
     // Call the Lomb-Scargle function from lombscargle.rs.
-    let power = lombscargle::lomb_scargle(&t, &y, &freqs);
+    let power = lombscargle::lomb_scargle(t_array.to_slice().unwrap(), y_array.to_slice().unwrap(), freqs_array.to_slice().unwrap());
 
-    // Create an empty Python list.
-    let py_list = PyList::empty(py);
-
-    // Directly convert each power value into a Python float.
-    for p in power.iter() {
-        let py_float = PyFloat::new(py, *p);
-        py_list.append(py_float)?;
-    }
-
-    Ok(py_list.into())
+    Ok(PyArray1::from_vec(py, power).to_owned())
 }
