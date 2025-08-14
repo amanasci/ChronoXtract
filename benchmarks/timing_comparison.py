@@ -54,7 +54,7 @@ def benchmark_fft(data_size):
     return ct_time, np_time
 
 def main():
-    data_sizes = [100, 1000, 10_000, 100_000, 1_000_000]
+    data_sizes = [100, 1000, 10_000, 100_000, 1_000_000, 5_000_000,10_000_000]
 
     print("| Function          | Data Size | ChronoXtract (s) | Numpy/Pandas (s) | Speedup      |")
     print("|-------------------|-----------|------------------|------------------|--------------|")
