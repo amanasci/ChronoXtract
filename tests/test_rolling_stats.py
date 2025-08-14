@@ -34,5 +34,47 @@ def test_sliding_window_entropy():
     window_size = 3
     num_bins = 2
     result = ct.sliding_window_entropy(data, window_size, num_bins)
+    # Entropy for [1, 1, 2] is -( (2/3)*log2(2/3) + (1/3)*log2(1/3) ) = 0.91829583
     expected = np.array([0.0, 0.91829583, 0.91829583, 0.0])
+    assert np.allclose(result, expected, atol=1e-5)
+
+def test_rolling_mean_window_1():
+    data = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    window = 1
+    result = ct.rolling_mean(data, window)
+    expected = data
+    assert np.allclose(result, expected)
+
+def test_rolling_mean_window_larger_than_data():
+    data = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    window = 10
+    result = ct.rolling_mean(data, window)
+    assert result.size == 0
+
+def test_rolling_variance_window_1():
+    data = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+    window = 1
+    result = ct.rolling_variance(data, window)
+    expected = np.zeros_like(data)
+    assert np.allclose(result, expected)
+
+def test_expanding_sum_int():
+    data = np.array([1, 2, 3, 4, 5], dtype=np.float64)
+    result = ct.expanding_sum(data)
+    expected = np.array([1.0, 3.0, 6.0, 10.0, 15.0])
+    assert np.allclose(result, expected)
+
+def test_exponential_moving_average_int():
+    data = np.array([1, 2, 3, 4, 5], dtype=np.float64)
+    alpha = 0.5
+    result = ct.exponential_moving_average(data, alpha)
+    expected = np.array([1.0, 1.5, 2.25, 3.125, 4.0625])
+    assert np.allclose(result, expected)
+
+def test_sliding_window_entropy_bins():
+    data = np.array([1.0, 1.0, 1.0, 2.0, 2.0, 2.0, 3.0, 3.0, 3.0])
+    window_size = 3
+    num_bins = 3
+    result = ct.sliding_window_entropy(data, window_size, num_bins)
+    expected = np.array([0.0, 0.91829583, 0.91829583, 0.0, 0.91829583, 0.91829583, 0.0])
     assert np.allclose(result, expected, atol=1e-5)

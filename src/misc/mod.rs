@@ -5,16 +5,24 @@ use pyo3::prelude::*;
 use numpy::{PyReadonlyArray1, PyArray1};
 use pyo3::types::PyDict;
 
+use pyo3::exceptions::PyValueError;
+
 #[pyfunction]
 #[pyo3(signature = (flux, flux_err))]
-pub fn fractional_variability(flux: PyReadonlyArray1<f64>, flux_err: PyReadonlyArray1<f64>) -> PyResult<Option<f64>> {
-    Ok(frac::fractional_variability(flux.as_slice()?, flux_err.as_slice()?))
+pub fn fractional_variability(flux: PyReadonlyArray1<f64>, flux_err: PyReadonlyArray1<f64>) -> PyResult<f64> {
+    match frac::fractional_variability(flux.as_slice()?, flux_err.as_slice()?) {
+        Ok(val) => Ok(val),
+        Err(e) => Err(PyValueError::new_err(e)),
+    }
 }
 
 #[pyfunction]
 #[pyo3(signature = (flux, flux_err))]
-pub fn fractional_variability_error(flux: PyReadonlyArray1<f64>, flux_err: PyReadonlyArray1<f64>) -> PyResult<Option<f64>> {
-    Ok(frac::fractional_variability_error(flux.as_slice()?, flux_err.as_slice()?))
+pub fn fractional_variability_error(flux: PyReadonlyArray1<f64>, flux_err: PyReadonlyArray1<f64>) -> PyResult<f64> {
+    match frac::fractional_variability_error(flux.as_slice()?, flux_err.as_slice()?) {
+        Ok(val) => Ok(val),
+        Err(e) => Err(PyValueError::new_err(e)),
+    }
 }
 
 #[pyfunction]
@@ -26,7 +34,7 @@ pub fn rolling_fractional_variability<'py>(
     window_size: usize,
 ) -> PyResult<PyObject> {
     match frac::rolling_fractional_variability(flux.as_slice()?, flux_err.as_slice()?, window_size) {
-        Some((variability, error)) => {
+        Ok((variability, error)) => {
             let py_variability = PyArray1::from_vec(py, variability).to_owned();
             let py_error = PyArray1::from_vec(py, error).to_owned();
             let dict = PyDict::new(py);
@@ -34,7 +42,7 @@ pub fn rolling_fractional_variability<'py>(
             dict.set_item("fvar_err", py_error)?;
             Ok(dict.into())
         },
-        None => Ok(py.None())
+        Err(e) => Err(PyValueError::new_err(e)),
     }
 }
 

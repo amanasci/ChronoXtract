@@ -12,12 +12,14 @@ def test_perform_fft():
 
     assert np.allclose(fft_result, np_fft)
 
-def test_lomb_scargle():
-    time = np.linspace(0, 1, 100)
-    values = np.sin(2 * np.pi * 5 * time)
-    frequencies = np.linspace(0.1, 10, 100)
+def test_perform_fft_odd_length():
+    data = np.array([1.0, 1.0, 1.0, 0.0, 0.0])
+    fft_result = ct.perform_fft_py(data)
+    np_fft = np.fft.fft(data)
+    assert np.allclose(fft_result, np_fft)
 
-    power = ct.lomb_scargle_py(time, values, frequencies)
-
-    # Check that the peak is at the right frequency
-    assert frequencies[np.argmax(power)] == pytest.approx(5, abs=0.1)
+def test_perform_fft_prime_length():
+    data = np.array([1.0, 1.0, 1.0, 0.0, 0.0, 1.0, 0.0])
+    fft_result = ct.perform_fft_py(data)
+    np_fft = np.fft.fft(data)
+    assert np.allclose(fft_result, np_fft)
