@@ -18,6 +18,10 @@ fn time_series_summary<'py>(py: Python<'py>, time_series: PyReadonlyArray1<'py, 
         return Err(pyo3::exceptions::PyValueError::new_err("Input time series cannot be empty"));
     }
 
+    if ts_view.iter().any(|&x| x.is_nan()) {
+        return Err(pyo3::exceptions::PyValueError::new_err("Input contains NaN values"));
+    }
+
     // Single-pass statistics
     let stats_summary = stats::_calculate_summary_statistics(ts_view);
 
@@ -53,6 +57,9 @@ fn time_series_mean_median_mode(time_series: PyReadonlyArray1<f64>) -> PyResult<
     let ts_view = time_series.as_array();
     if ts_view.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err("Input time series cannot be empty"));
+    }
+    if ts_view.iter().any(|&x| x.is_nan()) {
+        return Err(pyo3::exceptions::PyValueError::new_err("Input contains NaN values"));
     }
     let stats_summary = stats::_calculate_summary_statistics(ts_view);
     let (median, _) = stats::_calculate_median_and_quantiles(ts_view);
