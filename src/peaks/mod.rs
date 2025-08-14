@@ -1,20 +1,26 @@
 mod peak_func;
 
 use pyo3::prelude::*;
+use numpy::{PyReadonlyArray1, PyArray1};
 
 #[pyfunction]
 #[pyo3(signature = (data, height=None, distance=None))]
 pub fn find_peaks(
-    data: Vec<f64>, 
+    py: Python,
+    data: PyReadonlyArray1<f64>,
     height: Option<f64>, 
     distance: Option<usize>
-) -> PyResult<Vec<usize>> {
-    // Assuming detect_peaks takes a slice of f64 and returns a Vec<usize>
-    Ok(peak_func::find_peaks(data, height, distance))
+) -> PyResult<Py<PyArray1<usize>>> {
+    let data_array = data.as_array();
+    let peaks = peak_func::find_peaks(data_array.as_slice().unwrap(), height, distance);
+    Ok(PyArray1::from_vec(py, peaks).to_owned())
 }
 
 #[pyfunction]
-pub fn peak_prominence(data: Vec<f64>, peaks: Vec<usize>) -> PyResult<Vec<f64>> {
-    // Assuming peak_prominence takes a slice of f64 and a slice of usize and returns a Vec<f64>
-    Ok(peak_func::peak_prominence(data, peaks))
+#[pyo3(signature = (data, peaks))]
+pub fn peak_prominence(py: Python, data: PyReadonlyArray1<f64>, peaks: PyReadonlyArray1<usize>) -> PyResult<Py<PyArray1<f64>>> {
+    let data_array = data.as_array();
+    let peaks_array = peaks.as_array();
+    let prominences = peak_func::peak_prominence(data_array.as_slice().unwrap(), peaks_array.as_slice().unwrap());
+    Ok(PyArray1::from_vec(py, prominences).to_owned())
 }
