@@ -18,42 +18,32 @@ fn time_series_summary<'py>(py: Python<'py>, time_series: PyReadonlyArray1<'py, 
         return Err(pyo3::exceptions::PyValueError::new_err("Input time series cannot be empty"));
     }
 
-    // Basic statistics
-    let mean = stats::_calculate_mean(ts_view);
-    let median = stats::_calculate_median(ts_view);
+    // Single-pass statistics
+    let stats_summary = stats::_calculate_summary_statistics(ts_view);
+
+    // Median and Quantiles (one sort)
+    let (median, quantiles_vec) = stats::_calculate_median_and_quantiles(ts_view);
+
+    // Mode
     let mode = stats::_calculate_mode(ts_view);
-    let variance = stats::_calculate_variance(ts_view);
-    let std_dev = stats::_calculate_std_dev(ts_view);
-    let skewness = if std_dev > 0.0 { Some(stats::_calculate_skewness(ts_view, mean, std_dev)) } else { None };
-    let kurtosis = if std_dev > 0.0 { Some(stats::_calculate_kurtosis(ts_view, mean, std_dev)) } else { None };
-    
-    // Range statistics
-    let (min_val, max_val, range) = stats::_calculate_min_max_range(ts_view);
-    
-    // Quantiles
-    let quantiles_vec = stats::_calculate_quantiles(ts_view);
-    
-    // Sum and energy
-    let sum_val: f64 = ts_view.sum();
-    let energy: f64 = ts_view.mapv(|x| x.powi(2)).sum();
 
     // Add all values to the dictionary
-    summary.set_item("mean", mean)?;
+    summary.set_item("mean", stats_summary.mean)?;
     summary.set_item("median", median)?;
     summary.set_item("mode", mode)?;
-    summary.set_item("variance", variance)?;
-    summary.set_item("standard_deviation", std_dev)?;
-    if let Some(s) = skewness { summary.set_item("skewness", s)?; }
-    if let Some(k) = kurtosis { summary.set_item("kurtosis", k)?; }
-    summary.set_item("minimum", min_val)?;
-    summary.set_item("maximum", max_val)?;
-    summary.set_item("range", range)?;
+    summary.set_item("variance", stats_summary.variance)?;
+    summary.set_item("standard_deviation", stats_summary.std_dev)?;
+    if let Some(s) = stats_summary.skewness { summary.set_item("skewness", s)?; }
+    if let Some(k) = stats_summary.kurtosis { summary.set_item("kurtosis", k)?; }
+    summary.set_item("minimum", stats_summary.min)?;
+    summary.set_item("maximum", stats_summary.max)?;
+    summary.set_item("range", stats_summary.range)?;
     summary.set_item("q05", quantiles_vec[0])?;
     summary.set_item("q25", quantiles_vec[1])?;
     summary.set_item("q75", quantiles_vec[2])?;
     summary.set_item("q95", quantiles_vec[3])?;
-    summary.set_item("sum", sum_val)?;
-    summary.set_item("absolute_energy", energy)?;
+    summary.set_item("sum", stats_summary.sum)?;
+    summary.set_item("absolute_energy", stats_summary.energy)?;
 
     Ok(summary.into())
 }
@@ -64,26 +54,48 @@ fn time_series_mean_median_mode(time_series: PyReadonlyArray1<f64>) -> PyResult<
     if ts_view.is_empty() {
         return Err(pyo3::exceptions::PyValueError::new_err("Input time series cannot be empty"));
     }
-    let mean = stats::_calculate_mean(ts_view);
-    let median = stats::_calculate_median(ts_view);
+    let stats_summary = stats::_calculate_summary_statistics(ts_view);
+    let (median, _) = stats::_calculate_median_and_quantiles(ts_view);
     let mode = stats::_calculate_mode(ts_view);
-    Ok((mean, median, mode))
+    Ok((stats_summary.mean, median, mode))
 }
 
 /// A Python module implemented in Rust.
 #[pymodule]
 fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(time_series_mean_median_mode, m)?)?;
+    // Main functions
     m.add_function(wrap_pyfunction!(time_series_summary, m)?)?;
+    m.add_function(wrap_pyfunction!(time_series_mean_median_mode, m)?)?;
+
+    // Individual stat functions
+    m.add_function(wrap_pyfunction!(stats::calculate_mean, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_median, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_mode, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_variance, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_std_dev, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_skewness, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_kurtosis, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_min_max_range, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_quantiles, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_sum, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_absolute_energy, m)?)?;
+
+    // FDA functions
     m.add_function(wrap_pyfunction!(fda::perform_fft_py, m)?)?;
     m.add_function(wrap_pyfunction!(fda::lomb_scargle_py, m)?)?;
+
+    // Rolling stats functions
     m.add_function(wrap_pyfunction!(rollingstats::rolling_mean, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::rolling_variance, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::expanding_sum, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::exponential_moving_average, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::sliding_window_entropy, m)?)?;
+
+    // Peak functions
     m.add_function(wrap_pyfunction!(peaks::find_peaks, m)?)?;
     m.add_function(wrap_pyfunction!(peaks::peak_prominence, m)?)?;
+
+    // Misc functions
     m.add_function(wrap_pyfunction!(misc::fractional_variability, m)?)?;
     m.add_function(wrap_pyfunction!(misc::fractional_variability_error, m)?)?;
     m.add_function(wrap_pyfunction!(misc::rolling_fractional_variability, m)?)?;

@@ -2,6 +2,7 @@ import timeit
 import numpy as np
 import chronoxtract as ct
 import pandas as pd
+from scipy import stats
 
 def benchmark_summary(data_size):
     data = np.random.randn(data_size)
@@ -16,6 +17,13 @@ def benchmark_summary(data_size):
         np.std(data)
         np.min(data)
         np.max(data)
+        # For fair comparison, add the other stats
+        stats.mode(data)
+        stats.skew(data)
+        stats.kurtosis(data)
+        np.quantile(data, [0.05, 0.25, 0.75, 0.95])
+        np.sum(data)
+        np.sum(data**2) # absolute energy
 
     np_time = timeit.timeit(lambda: numpy_summary(data), number=10)
 
