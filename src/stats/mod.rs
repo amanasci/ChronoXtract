@@ -79,31 +79,33 @@ pub(crate) fn _calculate_summary_statistics(time_series: ArrayView1<f64>) -> Sum
 }
 
 pub(crate) fn _calculate_median_and_quantiles(time_series: ArrayView1<f64>) -> (f64, Vec<f64>) {
-    let mut sorted = time_series.to_vec();
-    sorted.sort_by(|a, b| a.partial_cmp(b).unwrap());
-    let n = sorted.len();
+    let n = time_series.len();
+    if n == 0 {
+        return (f64::NAN, vec![f64::NAN; 4]);
+    }
 
-    // Calculate median
-    let mid = n / 2;
+    let mut sorted_data = time_series.to_vec();
+    sorted_data.sort_by(|a, b| a.partial_cmp(b).unwrap());
+
+    // Calculate median from sorted data
     let median = if n % 2 == 0 {
-        (sorted[mid - 1] + sorted[mid]) / 2.0
+        (sorted_data[(n / 2) - 1] + sorted_data[n / 2]) / 2.0
     } else {
-        sorted[mid]
+        sorted_data[n / 2]
     };
 
-    // Calculate quantiles
-    let quantiles_to_calc = vec![0.05, 0.25, 0.75, 0.95];
-    let quantiles_vec = quantiles_to_calc
+    // Calculate quantiles from sorted data
+    let quantiles_vec = vec![0.05, 0.25, 0.75, 0.95]
         .into_iter()
         .map(|q| {
-            let pos: f64 = q * (n - 1) as f64;
-            let floor = pos.floor() as usize;
-            let ceil = pos.ceil() as usize;
-            if floor == ceil {
-                sorted[floor]
+            let pos = q * (n - 1) as f64;
+            let floor_idx = pos.floor() as usize;
+            let ceil_idx = pos.ceil() as usize;
+            if floor_idx == ceil_idx {
+                sorted_data[floor_idx]
             } else {
-                let frac = pos - floor as f64;
-                sorted[floor] * (1.0 - frac) + sorted[ceil] * frac
+                let frac = pos - floor_idx as f64;
+                sorted_data[floor_idx] * (1.0 - frac) + sorted_data[ceil_idx] * frac
             }
         })
         .collect();
@@ -138,4 +140,94 @@ pub fn calculate_mode(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     Ok(_calculate_mode(ts_view))
 }
 
+#[pyfunction]
+pub fn calculate_mean(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    Ok(_calculate_summary_statistics(ts_view).mean)
+}
 
+#[pyfunction]
+pub fn calculate_median(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    Ok(_calculate_median_and_quantiles(ts_view).0)
+}
+
+#[pyfunction]
+pub fn calculate_variance(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    Ok(_calculate_summary_statistics(ts_view).variance)
+}
+
+#[pyfunction]
+pub fn calculate_std_dev(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    Ok(_calculate_summary_statistics(ts_view).std_dev)
+}
+
+#[pyfunction]
+pub fn calculate_skewness(time_series: PyReadonlyArray1<f64>) -> PyResult<Option<f64>> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    Ok(_calculate_summary_statistics(ts_view).skewness)
+}
+
+#[pyfunction]
+pub fn calculate_kurtosis(time_series: PyReadonlyArray1<f64>) -> PyResult<Option<f64>> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    Ok(_calculate_summary_statistics(ts_view).kurtosis)
+}
+
+#[pyfunction]
+pub fn calculate_min_max_range(time_series: PyReadonlyArray1<f64>) -> PyResult<(f64, f64, f64)> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    let stats = _calculate_summary_statistics(ts_view);
+    Ok((stats.min, stats.max, stats.range))
+}
+
+#[pyfunction]
+pub fn calculate_quantiles(py: Python, time_series: PyReadonlyArray1<f64>) -> PyResult<Py<PyArray1<f64>>> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    let quantiles_vec = _calculate_median_and_quantiles(ts_view).1;
+    Ok(PyArray1::from_vec(py, quantiles_vec).to_owned())
+}
+
+#[pyfunction]
+pub fn calculate_sum(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    Ok(_calculate_summary_statistics(ts_view).sum)
+}
+
+#[pyfunction]
+pub fn calculate_absolute_energy(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
+    let ts_view = time_series.as_array();
+    if ts_view.is_empty() {
+        return Err(PyValueError::new_err("Input time series cannot be empty"));
+    }
+    Ok(_calculate_summary_statistics(ts_view).energy)
+}

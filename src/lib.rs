@@ -63,17 +63,39 @@ fn time_series_mean_median_mode(time_series: PyReadonlyArray1<f64>) -> PyResult<
 /// A Python module implemented in Rust.
 #[pymodule]
 fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
-    m.add_function(wrap_pyfunction!(time_series_mean_median_mode, m)?)?;
+    // Main functions
     m.add_function(wrap_pyfunction!(time_series_summary, m)?)?;
+    m.add_function(wrap_pyfunction!(time_series_mean_median_mode, m)?)?;
+
+    // Individual stat functions
+    m.add_function(wrap_pyfunction!(stats::calculate_mean, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_median, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_mode, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_variance, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_std_dev, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_skewness, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_kurtosis, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_min_max_range, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_quantiles, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_sum, m)?)?;
+    m.add_function(wrap_pyfunction!(stats::calculate_absolute_energy, m)?)?;
+
+    // FDA functions
     m.add_function(wrap_pyfunction!(fda::perform_fft_py, m)?)?;
     m.add_function(wrap_pyfunction!(fda::lomb_scargle_py, m)?)?;
+
+    // Rolling stats functions
     m.add_function(wrap_pyfunction!(rollingstats::rolling_mean, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::rolling_variance, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::expanding_sum, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::exponential_moving_average, m)?)?;
     m.add_function(wrap_pyfunction!(rollingstats::sliding_window_entropy, m)?)?;
+
+    // Peak functions
     m.add_function(wrap_pyfunction!(peaks::find_peaks, m)?)?;
     m.add_function(wrap_pyfunction!(peaks::peak_prominence, m)?)?;
+
+    // Misc functions
     m.add_function(wrap_pyfunction!(misc::fractional_variability, m)?)?;
     m.add_function(wrap_pyfunction!(misc::fractional_variability_error, m)?)?;
     m.add_function(wrap_pyfunction!(misc::rolling_fractional_variability, m)?)?;
