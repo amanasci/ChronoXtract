@@ -55,3 +55,22 @@ pub fn calc_variability_timescale(
 ) -> PyResult<Option<f64>> {
     Ok(var::calc_variability_timescale(time.as_slice()?, flux.as_slice()?, flux_err.as_slice()?))
 }
+
+#[pyfunction]
+#[pyo3(signature = (time, flux, flux_err))]
+pub fn variability_statistics<'py>(
+    py: Python<'py>,
+    time: PyReadonlyArray1<f64>,
+    flux: PyReadonlyArray1<f64>,
+    flux_err: PyReadonlyArray1<f64>,
+) -> PyResult<PyObject> {
+    let stats = var::variability_statistics(time.as_slice()?, flux.as_slice()?, flux_err.as_slice()?);
+    let dict = PyDict::new(py);
+    dict.set_item("min", stats.min)?;
+    dict.set_item("max", stats.max)?;
+    dict.set_item("mean", stats.mean)?;
+    dict.set_item("median", stats.median)?;
+    dict.set_item("std_dev", stats.std_dev)?;
+    dict.set_item("count", stats.count)?;
+    Ok(dict.into())
+}

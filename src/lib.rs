@@ -107,5 +107,6 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(misc::fractional_variability_error, m)?)?;
     m.add_function(wrap_pyfunction!(misc::rolling_fractional_variability, m)?)?;
     m.add_function(wrap_pyfunction!(misc::calc_variability_timescale, m)?)?;
+    m.add_function(wrap_pyfunction!(misc::variability_statistics, m)?)?;
     Ok(())
 }
