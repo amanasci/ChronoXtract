@@ -7,6 +7,7 @@ mod stats;
 mod fda;
 mod peaks;
 mod misc;
+mod correlation;
 
 
 #[pyfunction]
@@ -108,5 +109,10 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(misc::rolling_fractional_variability, m)?)?;
     m.add_function(wrap_pyfunction!(misc::calc_variability_timescale, m)?)?;
     m.add_function(wrap_pyfunction!(misc::variability_statistics, m)?)?;
+
+    // Correlation functions
+    m.add_function(wrap_pyfunction!(correlation::dcf_py, m)?)?;
+    m.add_function(wrap_pyfunction!(correlation::acf_py, m)?)?;
+    m.add_function(wrap_pyfunction!(correlation::zdcf_py, m)?)?;
     Ok(())
 }
