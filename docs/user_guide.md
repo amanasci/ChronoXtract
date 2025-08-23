@@ -10,9 +10,10 @@ Welcome to the comprehensive user guide for ChronoXtract! This guide will help y
 4. [Rolling Statistics](#rolling-statistics)
 5. [Frequency Domain Analysis](#frequency-domain-analysis)
 6. [Variability Analysis](#variability-analysis)
-7. [Best Practices](#best-practices)
-8. [Performance Tips](#performance-tips)
-9. [Real-World Applications](#real-world-applications)
+7. [Correlation Analysis](#correlation-analysis)
+8. [Best Practices](#best-practices)
+9. [Performance Tips](#performance-tips)
+10. [Real-World Applications](#real-world-applications)
 
 ---
 
@@ -381,6 +382,102 @@ var_analysis = variability_analysis(prices, price_errors)
 print(f"Overall fractional variability: {var_analysis['overall_fvar']:.4f} ± {var_analysis['overall_fvar_error']:.4f}")
 print(f"Maximum rolling variability: {var_analysis['max_variability']:.4f}")
 print(f"Average rolling variability: {var_analysis['average_variability']:.4f}")
+```
+
+---
+
+## Correlation Analysis
+
+### Auto-Correlation Function (ACF)
+
+The ACF is used to identify repeating patterns or periods in a single time series.
+
+```python
+import numpy as np
+import chronoxtract as ct
+import matplotlib.pyplot as plt
+
+# Create a time series with a known period
+period = 20
+t = np.linspace(0, 100, 100)
+v = np.sin(2 * np.pi * t / period)
+e = np.random.rand(100) * 0.1
+
+# Calculate the ACF
+result = ct.acf_py(t.tolist(), v.tolist(), e.tolist(), lag_min=0, lag_max=40, lag_bin_width=0.5)
+lags = result['lags']
+correlations = result['correlations']
+
+# Plot the ACF
+plt.plot(lags, correlations)
+plt.xlabel('Lag')
+plt.ylabel('Correlation')
+plt.title('Auto-Correlation Function')
+plt.show()
+```
+
+### Discrete Correlation Function (DCF)
+
+The DCF is used to find the time lag between two different time series.
+
+```python
+import numpy as np
+import chronoxtract as ct
+import matplotlib.pyplot as plt
+
+# Create two time series with a known lag
+t1 = np.linspace(0, 100, 100)
+v1 = np.sin(t1)
+e1 = np.random.rand(100) * 0.1
+
+lag = 10
+t2 = t1 + lag
+v2 = np.sin(t1)
+e2 = np.random.rand(100) * 0.1
+
+# Calculate the DCF
+result = ct.dcf_py(t1.tolist(), v1.tolist(), e1.tolist(), t2.tolist(), v2.tolist(), e2.tolist(), lag_min=-20, lag_max=20, lag_bin_width=0.5)
+lags = result['lags']
+correlations = result['correlations']
+
+# Plot the DCF
+plt.plot(lags, correlations)
+plt.xlabel('Lag')
+plt.ylabel('Correlation')
+plt.title('Discrete Correlation Function')
+plt.show()
+```
+
+### Z-transformed Discrete Correlation Function (ZDCF)
+
+The ZDCF is a more robust version of the DCF, especially for sparsely sampled time series.
+
+```python
+import numpy as np
+import chronoxtract as ct
+import matplotlib.pyplot as plt
+
+# Create two time series with a known lag
+t1 = np.linspace(0, 100, 100)
+v1 = np.sin(t1)
+e1 = np.random.rand(100) * 0.1
+
+lag = 10
+t2 = t1 + lag
+v2 = np.sin(t1)
+e2 = np.random.rand(100) * 0.1
+
+# Calculate the ZDCF
+result = ct.zdcf_py(t1.tolist(), v1.tolist(), e1.tolist(), t2.tolist(), v2.tolist(), e2.tolist(), min_points=11, num_mc=100)
+lags = result['lags']
+correlations = result['correlations']
+
+# Plot the ZDCF
+plt.plot(lags, correlations)
+plt.xlabel('Lag')
+plt.ylabel('Correlation')
+plt.title('Z-transformed Discrete Correlation Function')
+plt.show()
 ```
 
 ---
