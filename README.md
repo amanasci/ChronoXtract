@@ -114,6 +114,38 @@ ChronoXtract is built with Rust and PyO3, providing:
 - **Memory Efficient**: Optimized memory usage for large datasets
 - **Type Safety**: Rust's type system prevents runtime errors
 
+## 🎯 Roadmap
+
+Our future plans include:
+
+### Planned Features
+- **Peak Analysis**:
+  - Peak detection algorithms
+  - Peak prominence and width calculation
+  - Burst detection
+- **Advanced Time Series Analysis**:
+  - Seasonality and trend analysis
+  - Anomaly detection algorithms
+  - Time series decomposition
+- **Machine Learning Integration**:
+  - Feature selection utilities
+  - Automated feature extraction pipelines
+- **Performance Enhancements**:
+  - Parallel processing for large datasets
+  - Streaming algorithms for real-time analysis
+- **Additional Statistical Methods**:
+  - Correlation analysis
+  - Spectral density estimation
+  - Wavelet transforms
+- **Utility Functions**:
+  - Textual summary generation from statistical outputs
+
+### Documentation Improvements
+- Interactive Jupyter notebooks
+- Video tutorials
+- Automated API documentation
+- Benchmarking results and performance comparisons
+
 ## 🤝 Contributing
 
 We welcome contributions! Please see our [Contributing Guidelines](CONTRIBUTING.md) for details.

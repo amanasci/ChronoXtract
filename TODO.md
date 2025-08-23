@@ -51,4 +51,3 @@ This is list of features to implement.
   - Enhanced README.md with feature showcase
   - Contributing guidelines (CONTRIBUTING.md)
   - MIT License (LICENSE)
-  - Changelog (CHANGELOG.md)
