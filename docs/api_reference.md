@@ -8,6 +8,7 @@ This document provides detailed information about all functions available in Chr
 - [Rolling Statistics](#rolling-statistics)
 - [Frequency Domain Analysis](#frequency-domain-analysis)
 - [Variability Analysis](#variability-analysis)
+- [Correlation Analysis](#correlation-analysis)
 
 ---
 
@@ -392,3 +393,102 @@ All functions return appropriate error types when given invalid input:
 - Memory usage is optimized for streaming calculations where possible
 
 For more examples and tutorials, see the [Examples Gallery](examples/) and [User Guide](user_guide.md).
+
+---
+
+## Correlation Analysis
+
+### `acf_py(t, v, e, lag_min, lag_max, lag_bin_width)`
+
+Calculates the Auto-Correlation Function (ACF) of a time series.
+
+**Parameters:**
+- `t` (List[float]): Time points
+- `v` (List[float]): Value points
+- `e` (List[float]): Error points
+- `lag_min` (float): Minimum lag
+- `lag_max` (float): Maximum lag
+- `lag_bin_width` (float): Width of the lag bins
+
+**Returns:**
+- `dict`: Dictionary containing:
+  - `lags`: List of lags
+  - `correlations`: List of correlation values
+
+**Example:**
+```python
+import numpy as np
+import chronoxtract as ct
+
+period = 20
+t = np.linspace(0, 100, 100)
+v = np.sin(2 * np.pi * t / period)
+e = np.random.rand(100) * 0.1
+
+result = ct.acf_py(t.tolist(), v.tolist(), e.tolist(), lag_min=0, lag_max=40, lag_bin_width=0.5)
+```
+
+### `dcf_py(t1, v1, e1, t2, v2, e2, lag_min, lag_max, lag_bin_width)`
+
+Calculates the Discrete Correlation Function (DCF) between two time series.
+
+**Parameters:**
+- `t1`, `v1`, `e1` (List[float]): Time, value, and error for the first time series
+- `t2`, `v2`, `e2` (List[float]): Time, value, and error for the second time series
+- `lag_min` (float): Minimum lag
+- `lag_max` (float): Maximum lag
+- `lag_bin_width` (float): Width of the lag bins
+
+**Returns:**
+- `dict`: Dictionary containing:
+  - `lags`: List of lags
+  - `correlations`: List of correlation values
+
+**Example:**
+```python
+import numpy as np
+import chronoxtract as ct
+
+t1 = np.linspace(0, 100, 100)
+v1 = np.sin(t1)
+e1 = np.random.rand(100) * 0.1
+
+lag = 10
+t2 = t1 + lag
+v2 = np.sin(t1)
+e2 = np.random.rand(100) * 0.1
+
+result = ct.dcf_py(t1.tolist(), v1.tolist(), e1.tolist(), t2.tolist(), v2.tolist(), e2.tolist(), lag_min=-20, lag_max=20, lag_bin_width=0.5)
+```
+
+### `zdcf_py(t1, v1, e1, t2, v2, e2, min_points, num_mc)`
+
+Calculates the Z-transformed Discrete Correlation Function (ZDCF) between two time series.
+
+**Parameters:**
+- `t1`, `v1`, `e1` (List[float]): Time, value, and error for the first time series
+- `t2`, `v2`, `e2` (List[float]): Time, value, and error for the second time series
+- `min_points` (int): Minimum number of points in a bin
+- `num_mc` (int): Number of Monte Carlo simulations
+
+**Returns:**
+- `dict`: Dictionary containing:
+  - `lags`: List of lags
+  - `correlations`: List of correlation values
+
+**Example:**
+```python
+import numpy as np
+import chronoxtract as ct
+
+t1 = np.linspace(0, 100, 100)
+v1 = np.sin(t1)
+e1 = np.random.rand(100) * 0.1
+
+lag = 10
+t2 = t1 + lag
+v2 = np.sin(t1)
+e2 = np.random.rand(100) * 0.1
+
+result = ct.zdcf_py(t1.tolist(), v1.tolist(), e1.tolist(), t2.tolist(), v2.tolist(), e2.tolist(), min_points=11, num_mc=100)
+```

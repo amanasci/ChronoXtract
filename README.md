@@ -28,6 +28,11 @@ ChronoXtract is a high-performance Python library for time series feature extrac
 - **Rolling Fractional Variability**: Time-varying variability
 - **Variability Timescale**: Characteristic time scales
 
+### 📈 **Correlation Analysis**
+- **Discrete Correlation Function (DCF)**: For analyzing two time series.
+- **Auto-Correlation Function (ACF)**: For analyzing a single time series.
+- **Z-transformed Discrete Correlation Function (ZDCF)**: An improved DCF method.
+
 ## 📦 Installation
 
 ### From PyPI (Recommended)
