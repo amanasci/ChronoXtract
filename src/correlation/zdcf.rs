@@ -85,11 +85,11 @@ fn alcbin(
     let mut incr: i32 = -1;
 
     loop {
+        let mut used1 = vec![false; n1];
+        let mut used2 = vec![false; n2];
         let mut i = pfr;
         loop {
             let mut current_bin: Vec<(usize, usize)> = Vec::new();
-            let mut used1 = vec![false; n1];
-            let mut used2 = vec![false; n2];
             let mut tij = time_lags[i].0;
 
             loop {
