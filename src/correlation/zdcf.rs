@@ -33,13 +33,6 @@ fn clcdcf(
     bins: &[Vec<(usize, usize)>],
 ) -> Vec<(f64, f64)> {
     let mut results = Vec::new();
-    let n1 = series1_mc.len();
-    let n2 = series2_mc.len();
-    let mean1 = series1_mc.iter().sum::<f64>() / n1 as f64;
-    let mean2 = series2_mc.iter().sum::<f64>() / n2 as f64;
-    let std_dev1 = (series1_mc.iter().map(|&x| (x - mean1).powi(2)).sum::<f64>() / (n1 - 1) as f64).sqrt();
-    let std_dev2 = (series2_mc.iter().map(|&x| (x - mean2).powi(2)).sum::<f64>() / (n2 - 1) as f64).sqrt();
-    let vnorm = std_dev1 * std_dev2;
 
     for bin in bins {
         let n = bin.len() as f64;
@@ -48,15 +41,41 @@ fn clcdcf(
         }
 
         let mut lag_sum = 0.0;
-        let mut r_sum = 0.0;
+        let mut sum1 = 0.0;
+        let mut sum2 = 0.0;
+        let mut sum1_sq = 0.0;
+        let mut sum2_sq = 0.0;
+        let mut sum12 = 0.0;
 
+        // Calculate sums for this bin
         for &(i, j) in bin {
+            let x1 = series1_mc[i];
+            let x2 = series2_mc[j];
+            
             lag_sum += series2[j].time - series1[i].time;
-            r_sum += (series1_mc[i] - mean1) * (series2_mc[j] - mean2);
+            sum1 += x1;
+            sum2 += x2;
+            sum1_sq += x1 * x1;
+            sum2_sq += x2 * x2;
+            sum12 += x1 * x2;
         }
 
         let lag = lag_sum / n;
-        let r = r_sum / (n * vnorm);
+        
+        // Calculate correlation coefficient for this bin
+        let mean1 = sum1 / n;
+        let mean2 = sum2 / n;
+        
+        let var1 = sum1_sq / n - mean1 * mean1;
+        let var2 = sum2_sq / n - mean2 * mean2;
+        let covar = sum12 / n - mean1 * mean2;
+        
+        let r = if var1 > 0.0 && var2 > 0.0 {
+            covar / (var1.sqrt() * var2.sqrt())
+        } else {
+            0.0
+        };
+        
         results.push((lag, r));
     }
     results
@@ -69,68 +88,67 @@ fn alcbin(
 ) -> Vec<Vec<(usize, usize)>> {
     let n1 = series1.len();
     let n2 = series2.len();
+    
+    // Create all possible lag pairs
     let mut time_lags: Vec<(f64, usize, usize)> = Vec::with_capacity(n1 * n2);
     for i in 0..n1 {
         for j in 0..n2 {
             time_lags.push((series2[j].time - series1[i].time, i, j));
         }
     }
+    
+    // Sort by time lag
     time_lags.sort_by(|a, b| a.0.partial_cmp(&b.0).unwrap());
-
+    
     let n_pairs = time_lags.len();
     let mut bins: Vec<Vec<(usize, usize)>> = Vec::new();
-
+    
+    // Track which data points have been used
     let mut used1 = vec![false; n1];
     let mut used2 = vec![false; n2];
-
-    let mut pfr = n_pairs / 2;
-    let mut pmax = 0;
-    let mut incr: i32 = -1;
-
-    loop {
-        let mut i = pfr;
-        loop {
+    
+    // Start from the center and work outward (Alexander 1997 algorithm)
+    let center = n_pairs / 2;
+    
+    // Process in both directions from center
+    let directions = [(-1i32, center), (1i32, center)];
+    
+    for &(direction, start_pos) in &directions {
+        let mut pos = start_pos as i32;
+        
+        while pos >= 0 && pos < n_pairs as i32 {
             let mut current_bin: Vec<(usize, usize)> = Vec::new();
-            let mut tij = time_lags[i].0;
-
-            loop {
-                let (lag, idx1, idx2) = time_lags[i];
-                if (lag - tij).abs() > 1e-7 && current_bin.len() >= min_points {
-                    pfr = i;
-                    break;
-                }
-
+            
+            // Collect pairs for this bin, ensuring equal population
+            let mut temp_pos = pos;
+            while temp_pos >= 0 && temp_pos < n_pairs as i32 {
+                let (_lag, idx1, idx2) = time_lags[temp_pos as usize];
+                
+                // Only use unused pairs
                 if !used1[idx1] && !used2[idx2] {
                     current_bin.push((idx1, idx2));
                     used1[idx1] = true;
                     used2[idx2] = true;
-                    tij = lag;
+                    
+                    // Stop when we have enough points for this bin
+                    if current_bin.len() >= min_points {
+                        break;
+                    }
                 }
-
-                if i as i32 == pmax {
-                    pfr = i;
-                    break;
-                }
-                i = (i as i32 + incr) as usize;
+                temp_pos += direction;
             }
-
-            if !current_bin.is_empty() {
+            
+            // Add bin if it has enough points
+            if current_bin.len() >= min_points {
                 bins.push(current_bin);
-            }
-
-            if i as i32 == pmax {
+                pos = temp_pos + direction;
+            } else {
+                // Not enough points left, stop
                 break;
             }
         }
-
-        if incr == -1 {
-            pfr = n_pairs / 2 + 1;
-            pmax = (n_pairs - 1) as i32;
-            incr = 1;
-        } else {
-            break;
-        }
     }
+    
     bins
 }
 
