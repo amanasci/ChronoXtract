@@ -102,54 +102,81 @@ fn alcbin(
     
     let n_pairs = time_lags.len();
     let mut bins: Vec<Vec<(usize, usize)>> = Vec::new();
+    let mut negative_bins: Vec<Vec<(usize, usize)>> = Vec::new();
     
-    // Track which data points have been used
-    let mut used1 = vec![false; n1];
-    let mut used2 = vec![false; n2];
+    // Alexander's algorithm: Start from median and work in both directions
+    // Phase 1: From median backwards (negative lags)
+    // Phase 2: From median forwards (positive lags)
     
-    // Start from the center and work outward (Alexander 1997 algorithm)
-    let center = n_pairs / 2;
+    let median_idx = n_pairs / 2;
     
-    // Process in both directions from center
-    let directions = [(-1i32, center), (1i32, center)];
-    
-    for &(direction, start_pos) in &directions {
-        let mut pos = start_pos as i32;
+    // Phase 1: Process negative lags (backwards from median)
+    let mut pos = median_idx as i32 - 1;
+    while pos >= 0 {
+        let mut current_bin: Vec<(usize, usize)> = Vec::new();
+        let mut used1 = vec![false; n1];
+        let mut used2 = vec![false; n2];
         
-        while pos >= 0 && pos < n_pairs as i32 {
-            let mut current_bin: Vec<(usize, usize)> = Vec::new();
+        // Collect pairs for this bin, ensuring equal population
+        let mut temp_pos = pos;
+        while temp_pos >= 0 && current_bin.len() < min_points {
+            let (_lag, idx1, idx2) = time_lags[temp_pos as usize];
             
-            // Collect pairs for this bin, ensuring equal population
-            let mut temp_pos = pos;
-            while temp_pos >= 0 && temp_pos < n_pairs as i32 {
-                let (_lag, idx1, idx2) = time_lags[temp_pos as usize];
-                
-                // Only use unused pairs
-                if !used1[idx1] && !used2[idx2] {
-                    current_bin.push((idx1, idx2));
-                    used1[idx1] = true;
-                    used2[idx2] = true;
-                    
-                    // Stop when we have enough points for this bin
-                    if current_bin.len() >= min_points {
-                        break;
-                    }
-                }
-                temp_pos += direction;
+            // Only use unused pairs in this bin
+            if !used1[idx1] && !used2[idx2] {
+                current_bin.push((idx1, idx2));
+                used1[idx1] = true;
+                used2[idx2] = true;
             }
-            
-            // Add bin if it has enough points
-            if current_bin.len() >= min_points {
-                bins.push(current_bin);
-                pos = temp_pos + direction;
-            } else {
-                // Not enough points left, stop
-                break;
-            }
+            temp_pos -= 1;
+        }
+        
+        // Add bin if it has enough points
+        if current_bin.len() >= min_points {
+            negative_bins.push(current_bin);
+            pos = temp_pos;
+        } else {
+            // Not enough points left, stop
+            break;
         }
     }
     
-    bins
+    // Phase 2: Process positive lags (forwards from median)
+    pos = median_idx as i32;
+    while pos < n_pairs as i32 {
+        let mut current_bin: Vec<(usize, usize)> = Vec::new();
+        let mut used1 = vec![false; n1];
+        let mut used2 = vec![false; n2];
+        
+        // Collect pairs for this bin, ensuring equal population
+        let mut temp_pos = pos;
+        while temp_pos < n_pairs as i32 && current_bin.len() < min_points {
+            let (_lag, idx1, idx2) = time_lags[temp_pos as usize];
+            
+            // Only use unused pairs in this bin
+            if !used1[idx1] && !used2[idx2] {
+                current_bin.push((idx1, idx2));
+                used1[idx1] = true;
+                used2[idx2] = true;
+            }
+            temp_pos += 1;
+        }
+        
+        // Add bin if it has enough points
+        if current_bin.len() >= min_points {
+            bins.push(current_bin);
+            pos = temp_pos;
+        } else {
+            // Not enough points left, stop
+            break;
+        }
+    }
+    
+    // Combine bins in chronological order: negative lags (reversed) + positive lags
+    negative_bins.reverse();
+    negative_bins.extend(bins);
+    
+    negative_bins
 }
 
 pub fn zdcf(
