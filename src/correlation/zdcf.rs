@@ -80,6 +80,9 @@ fn alcbin(
     let n_pairs = time_lags.len();
     let mut bins: Vec<Vec<(usize, usize)>> = Vec::new();
 
+    let mut used1 = vec![false; n1];
+    let mut used2 = vec![false; n2];
+
     let mut pfr = n_pairs / 2;
     let mut pmax = 0;
     let mut incr: i32 = -1;
@@ -88,8 +91,6 @@ fn alcbin(
         let mut i = pfr;
         loop {
             let mut current_bin: Vec<(usize, usize)> = Vec::new();
-            let mut used1 = vec![false; n1];
-            let mut used2 = vec![false; n2];
             let mut tij = time_lags[i].0;
 
             loop {
