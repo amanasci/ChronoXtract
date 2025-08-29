@@ -14,6 +14,45 @@ mod seasonality;
 mod shape;
 
 
+/// Calculate a comprehensive statistical summary of a time series.
+/// 
+/// This function computes multiple statistical measures in a single pass for efficiency,
+/// including descriptive statistics, distribution measures, and energy metrics.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// A dictionary containing:
+/// - `mean`: Arithmetic mean
+/// - `median`: Middle value when sorted
+/// - `mode`: Most frequently occurring value
+/// - `variance`: Sample variance
+/// - `standard_deviation`: Square root of variance
+/// - `skewness`: Measure of asymmetry (None if std_dev too small)
+/// - `kurtosis`: Measure of tail heaviness (None if std_dev too small)
+/// - `minimum`: Smallest value
+/// - `maximum`: Largest value
+/// - `range`: Difference between max and min
+/// - `q05`, `q25`, `q75`, `q95`: Quantiles at 5%, 25%, 75%, 95%
+/// - `sum`: Sum of all values
+/// - `absolute_energy`: Sum of squared values
+///
+/// # Errors
+/// Returns `PyValueError` if:
+/// - Input time series is empty
+/// - Input contains NaN values
+///
+/// # Example
+/// ```python
+/// import chronoxtract as ct
+/// import numpy as np
+/// 
+/// data = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+/// summary = ct.time_series_summary(data)
+/// print(f"Mean: {summary['mean']}")
+/// print(f"Standard deviation: {summary['standard_deviation']}")
+/// ```
 #[pyfunction]
 fn time_series_summary<'py>(py: Python<'py>, time_series: PyReadonlyArray1<'py, f64>) -> PyResult<Py<PyDict>> {
     let summary = PyDict::new(py);
@@ -57,6 +96,31 @@ fn time_series_summary<'py>(py: Python<'py>, time_series: PyReadonlyArray1<'py, 
     Ok(summary.into())
 }
 
+/// Calculate the mean, median, and mode of a time series.
+/// 
+/// This is a convenience function that returns the three most common measures 
+/// of central tendency in a single function call.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// A tuple containing (mean, median, mode)
+///
+/// # Errors
+/// Returns `PyValueError` if:
+/// - Input time series is empty
+/// - Input contains NaN values
+///
+/// # Example
+/// ```python
+/// import chronoxtract as ct
+/// import numpy as np
+/// 
+/// data = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+/// mean, median, mode = ct.time_series_mean_median_mode(data)
+/// print(f"Mean: {mean}, Median: {median}, Mode: {mode}")
+/// ```
 #[pyfunction]
 fn time_series_mean_median_mode(time_series: PyReadonlyArray1<f64>) -> PyResult<(f64, f64, f64)> {
     let ts_view = time_series.as_array();
