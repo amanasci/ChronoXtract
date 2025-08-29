@@ -9,6 +9,7 @@ mod peaks;
 mod misc;
 mod correlation;
 mod higherorder;
+mod entropy;
 
 
 #[pyfunction]
@@ -126,6 +127,13 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(higherorder::central_moment_6, m)?)?;
     m.add_function(wrap_pyfunction!(higherorder::central_moment_7, m)?)?;
     m.add_function(wrap_pyfunction!(higherorder::central_moment_8, m)?)?;
+
+    // Entropy and information-theoretic measures
+    m.add_function(wrap_pyfunction!(entropy::sample_entropy, m)?)?;
+    m.add_function(wrap_pyfunction!(entropy::approximate_entropy, m)?)?;
+    m.add_function(wrap_pyfunction!(entropy::permutation_entropy, m)?)?;
+    m.add_function(wrap_pyfunction!(entropy::lempel_ziv_complexity, m)?)?;
+    m.add_function(wrap_pyfunction!(entropy::multiscale_entropy, m)?)?;
 
     Ok(())
 }
