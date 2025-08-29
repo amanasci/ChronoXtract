@@ -22,7 +22,7 @@ use numpy::{PyReadonlyArray1, PyArray1};
 /// import numpy as np
 /// 
 /// # Create a signal with peaks
-/// data = np.array([0, 1, 0, 3, 0, 2, 0])
+/// data = np.array([0.0, 1.0, 0.0, 3.0, 0.0, 2.0, 0.0])
 /// peaks = ct.find_peaks(data, height=1.5)
 /// print(f"Peaks at indices: {peaks}")
 /// ```
@@ -57,7 +57,7 @@ pub fn find_peaks(
 /// import chronoxtract as ct
 /// import numpy as np
 /// 
-/// data = np.array([0, 1, 0, 3, 0, 2, 0])
+/// data = np.array([0.0, 1.0, 0.0, 3.0, 0.0, 2.0, 0.0])
 /// peaks = ct.find_peaks(data)
 /// prominences = ct.peak_prominence(data, peaks)
 /// print(f"Peak prominences: {prominences}")
