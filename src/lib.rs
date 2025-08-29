@@ -10,6 +10,7 @@ mod misc;
 mod correlation;
 mod higherorder;
 mod entropy;
+mod seasonality;
 
 
 #[pyfunction]
@@ -134,6 +135,14 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(entropy::permutation_entropy, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::lempel_ziv_complexity, m)?)?;
     m.add_function(wrap_pyfunction!(entropy::multiscale_entropy, m)?)?;
+
+    // Seasonality and trend analysis
+    m.add_function(wrap_pyfunction!(seasonality::seasonal_trend_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::seasonal_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::trend_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::simple_stl_decomposition, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::detect_seasonality, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::detrended_fluctuation_analysis, m)?)?;
 
     Ok(())
 }
