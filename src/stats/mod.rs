@@ -131,6 +131,19 @@ pub(crate) fn _calculate_mode(time_series: ArrayView1<f64>) -> f64 {
 
 // PyO3 wrappers
 
+/// Calculate the mode (most frequently occurring value) of a time series.
+/// 
+/// The mode is determined by finding the value that appears most frequently.
+/// For continuous data, values are treated as bit-exact matches.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The mode value as f64
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_mode(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     let ts_view = time_series.as_array();
@@ -140,6 +153,18 @@ pub fn calculate_mode(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     Ok(_calculate_mode(ts_view))
 }
 
+/// Calculate the arithmetic mean of a time series.
+/// 
+/// Computes the sum of all values divided by the number of values.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The arithmetic mean as f64
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_mean(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     let ts_view = time_series.as_array();
@@ -149,6 +174,19 @@ pub fn calculate_mean(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     Ok(_calculate_summary_statistics(ts_view).mean)
 }
 
+/// Calculate the median (middle value) of a time series.
+/// 
+/// The median is the value that separates the higher half from the lower half
+/// of the data when arranged in order.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The median value as f64
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_median(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     let ts_view = time_series.as_array();
@@ -158,6 +196,19 @@ pub fn calculate_median(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     Ok(_calculate_median_and_quantiles(ts_view).0)
 }
 
+/// Calculate the sample variance of a time series.
+/// 
+/// Variance measures how spread out the data points are from the mean.
+/// Uses the sample variance formula (division by n, not n-1).
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The variance as f64
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_variance(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     let ts_view = time_series.as_array();
@@ -167,6 +218,19 @@ pub fn calculate_variance(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     Ok(_calculate_summary_statistics(ts_view).variance)
 }
 
+/// Calculate the standard deviation of a time series.
+/// 
+/// Standard deviation is the square root of the variance and provides
+/// a measure of the spread of data in the same units as the original data.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The standard deviation as f64
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_std_dev(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     let ts_view = time_series.as_array();
@@ -176,6 +240,20 @@ pub fn calculate_std_dev(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     Ok(_calculate_summary_statistics(ts_view).std_dev)
 }
 
+/// Calculate the skewness of a time series.
+/// 
+/// Skewness measures the asymmetry of the distribution. Positive skewness
+/// indicates a longer tail on the right side, negative skewness indicates
+/// a longer tail on the left side.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The skewness as Option<f64> (None if standard deviation is too small)
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_skewness(time_series: PyReadonlyArray1<f64>) -> PyResult<Option<f64>> {
     let ts_view = time_series.as_array();
@@ -185,6 +263,20 @@ pub fn calculate_skewness(time_series: PyReadonlyArray1<f64>) -> PyResult<Option
     Ok(_calculate_summary_statistics(ts_view).skewness)
 }
 
+/// Calculate the kurtosis of a time series.
+/// 
+/// Kurtosis measures the "tailedness" of the distribution. High kurtosis
+/// indicates heavy tails and a sharp peak, low kurtosis indicates light
+/// tails and a flat peak.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The kurtosis as Option<f64> (None if standard deviation is too small)
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_kurtosis(time_series: PyReadonlyArray1<f64>) -> PyResult<Option<f64>> {
     let ts_view = time_series.as_array();
@@ -194,6 +286,18 @@ pub fn calculate_kurtosis(time_series: PyReadonlyArray1<f64>) -> PyResult<Option
     Ok(_calculate_summary_statistics(ts_view).kurtosis)
 }
 
+/// Calculate the minimum, maximum, and range of a time series.
+/// 
+/// Range is computed as the difference between maximum and minimum values.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// A tuple containing (minimum, maximum, range)
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_min_max_range(time_series: PyReadonlyArray1<f64>) -> PyResult<(f64, f64, f64)> {
     let ts_view = time_series.as_array();
@@ -204,6 +308,18 @@ pub fn calculate_min_max_range(time_series: PyReadonlyArray1<f64>) -> PyResult<(
     Ok((stats.min, stats.max, stats.range))
 }
 
+/// Calculate quantiles of a time series.
+/// 
+/// Computes the 5th, 25th, 75th, and 95th percentiles of the data.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// A numpy array containing the quantiles [q05, q25, q75, q95]
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_quantiles(py: Python, time_series: PyReadonlyArray1<f64>) -> PyResult<Py<PyArray1<f64>>> {
     let ts_view = time_series.as_array();
@@ -214,6 +330,18 @@ pub fn calculate_quantiles(py: Python, time_series: PyReadonlyArray1<f64>) -> Py
     Ok(PyArray1::from_vec(py, quantiles_vec).to_owned())
 }
 
+/// Calculate the sum of all values in a time series.
+/// 
+/// Computes the arithmetic sum of all elements in the time series.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The sum as f64
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_sum(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     let ts_view = time_series.as_array();
@@ -223,6 +351,19 @@ pub fn calculate_sum(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     Ok(_calculate_summary_statistics(ts_view).sum)
 }
 
+/// Calculate the absolute energy of a time series.
+/// 
+/// Absolute energy is the sum of squared values, which represents
+/// the total energy content of the signal.
+///
+/// # Arguments
+/// * `time_series` - Input time series data as a numpy array
+///
+/// # Returns
+/// The absolute energy as f64
+///
+/// # Errors
+/// Returns `PyValueError` if input time series is empty
 #[pyfunction]
 pub fn calculate_absolute_energy(time_series: PyReadonlyArray1<f64>) -> PyResult<f64> {
     let ts_view = time_series.as_array();

@@ -8,6 +8,31 @@ pub mod dcf;
 pub mod acf;
 pub mod zdcf;
 
+/// Compute Discrete Correlation Function (DCF) between two time series.
+/// 
+/// The DCF measures the correlation between two time series as a function of lag.
+/// It's particularly useful for unevenly sampled data and can handle measurement
+/// uncertainties.
+///
+/// # Arguments
+/// * `t1` - Time points for first time series
+/// * `v1` - Values for first time series
+/// * `e1` - Errors for first time series
+/// * `t2` - Time points for second time series
+/// * `v2` - Values for second time series
+/// * `e2` - Errors for second time series
+/// * `lag_min` - Minimum lag to compute
+/// * `lag_max` - Maximum lag to compute
+/// * `lag_bin_width` - Width of lag bins
+///
+/// # Returns
+/// A dictionary containing:
+/// - `lags`: Array of lag values
+/// - `correlations`: Array of correlation coefficients
+/// - `errors`: Array of correlation errors
+///
+/// # Errors
+/// Returns `PyValueError` if time series have fewer than 2 points
 #[pyfunction]
 pub fn dcf_py<'py>(
     py: Python<'py>,
@@ -70,6 +95,39 @@ pub fn dcf_py<'py>(
     Ok(result.into())
 }
 
+/// Compute Auto-Correlation Function (ACF) of a time series.
+/// 
+/// The ACF measures how a time series correlates with a lagged version of itself.
+/// It's useful for detecting repeating patterns and periodicities in the data.
+///
+/// # Arguments
+/// * `t` - Time points as a numpy array
+/// * `v` - Values as a numpy array
+/// * `e` - Errors as a numpy array
+/// * `lag_min` - Minimum lag to compute
+/// * `lag_max` - Maximum lag to compute
+/// * `lag_bin_width` - Width of lag bins
+///
+/// # Returns
+/// A dictionary containing:
+/// - `lags`: Array of lag values
+/// - `correlations`: Array of autocorrelation coefficients
+/// - `errors`: Array of correlation errors
+///
+/// # Errors
+/// Returns `PyValueError` if time series has fewer than 2 points
+///
+/// # Example
+/// ```python
+/// import chronoxtract as ct
+/// import numpy as np
+/// 
+/// t = np.linspace(0, 10, 100)
+/// v = np.sin(2 * np.pi * t) + 0.1 * np.random.randn(100)
+/// e = np.full_like(v, 0.1)
+/// acf_result = ct.acf_py(t, v, e, 0, 5, 0.1)
+/// print(f"Peak correlation at lag: {acf_result['lags'][np.argmax(acf_result['correlations'])]}")
+/// ```
 #[pyfunction]
 pub fn acf_py<'py>(
     py: Python<'py>,
@@ -115,6 +173,30 @@ pub fn acf_py<'py>(
     Ok(result.into())
 }
 
+/// Compute z-transformed Discrete Correlation Function (ZDCF).
+/// 
+/// The ZDCF is an improved version of the DCF that uses z-transformation
+/// and Monte Carlo methods to better estimate correlation uncertainties,
+/// especially for sparse or irregular time series.
+///
+/// # Arguments
+/// * `t1` - Time points for first time series
+/// * `v1` - Values for first time series
+/// * `e1` - Errors for first time series
+/// * `t2` - Time points for second time series
+/// * `v2` - Values for second time series
+/// * `e2` - Errors for second time series
+/// * `min_points` - Minimum number of points required in each lag bin
+/// * `num_mc` - Number of Monte Carlo iterations for error estimation
+///
+/// # Returns
+/// A dictionary containing:
+/// - `lags`: Array of lag values
+/// - `correlations`: Array of correlation coefficients
+/// - `errors`: Array of correlation errors
+///
+/// # Errors
+/// Returns `PyValueError` if time series have fewer than 2 points
 #[pyfunction]
 pub fn zdcf_py<'py>(
     py: Python<'py>,

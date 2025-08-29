@@ -34,6 +34,13 @@ This is list of features to implement.
   - Comprehensive examples for each function
   - Error handling information
 
+- [X] **Rust Function Documentation** (Rust doc comments ///)
+  - All Python-exposed functions now have proper Rust documentation
+  - Complete parameter descriptions and return types
+  - Examples with proper data types
+  - Error condition documentation
+  - Accessible via Python's help() system
+
 - [X] **User Guide** (`docs/user_guide.md`)
   - Getting started tutorial
   - Core concepts explanation
