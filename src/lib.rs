@@ -11,6 +11,7 @@ mod correlation;
 mod higherorder;
 mod entropy;
 mod seasonality;
+mod shape;
 
 
 #[pyfunction]
@@ -143,6 +144,18 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(seasonality::simple_stl_decomposition, m)?)?;
     m.add_function(wrap_pyfunction!(seasonality::detect_seasonality, m)?)?;
     m.add_function(wrap_pyfunction!(seasonality::detrended_fluctuation_analysis, m)?)?;
+
+    // Shape and peak features
+    m.add_function(wrap_pyfunction!(shape::zero_crossing_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::slope_features, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::mean_slope, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::slope_variance, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::max_slope, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::enhanced_peak_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::peak_to_peak_amplitude, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::variability_features, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::turning_points, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::energy_distribution, m)?)?;
 
     Ok(())
 }
