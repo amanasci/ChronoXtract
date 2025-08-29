@@ -8,6 +8,10 @@ mod fda;
 mod peaks;
 mod misc;
 mod correlation;
+mod higherorder;
+mod entropy;
+mod seasonality;
+mod shape;
 
 
 #[pyfunction]
@@ -114,5 +118,44 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(correlation::dcf_py, m)?)?;
     m.add_function(wrap_pyfunction!(correlation::acf_py, m)?)?;
     m.add_function(wrap_pyfunction!(correlation::zdcf_py, m)?)?;
+
+    // Higher-order statistics
+    m.add_function(wrap_pyfunction!(higherorder::hjorth_parameters, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::hjorth_activity, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::hjorth_mobility, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::hjorth_complexity, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::higher_moments, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::central_moment_5, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::central_moment_6, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::central_moment_7, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::central_moment_8, m)?)?;
+
+    // Entropy and information-theoretic measures
+    m.add_function(wrap_pyfunction!(entropy::sample_entropy, m)?)?;
+    m.add_function(wrap_pyfunction!(entropy::approximate_entropy, m)?)?;
+    m.add_function(wrap_pyfunction!(entropy::permutation_entropy, m)?)?;
+    m.add_function(wrap_pyfunction!(entropy::lempel_ziv_complexity, m)?)?;
+    m.add_function(wrap_pyfunction!(entropy::multiscale_entropy, m)?)?;
+
+    // Seasonality and trend analysis
+    m.add_function(wrap_pyfunction!(seasonality::seasonal_trend_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::seasonal_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::trend_strength, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::simple_stl_decomposition, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::detect_seasonality, m)?)?;
+    m.add_function(wrap_pyfunction!(seasonality::detrended_fluctuation_analysis, m)?)?;
+
+    // Shape and peak features
+    m.add_function(wrap_pyfunction!(shape::zero_crossing_rate, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::slope_features, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::mean_slope, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::slope_variance, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::max_slope, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::enhanced_peak_stats, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::peak_to_peak_amplitude, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::variability_features, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::turning_points, m)?)?;
+    m.add_function(wrap_pyfunction!(shape::energy_distribution, m)?)?;
+
     Ok(())
 }
