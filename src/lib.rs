@@ -8,6 +8,7 @@ mod fda;
 mod peaks;
 mod misc;
 mod correlation;
+mod higherorder;
 
 
 #[pyfunction]
@@ -114,5 +115,17 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(correlation::dcf_py, m)?)?;
     m.add_function(wrap_pyfunction!(correlation::acf_py, m)?)?;
     m.add_function(wrap_pyfunction!(correlation::zdcf_py, m)?)?;
+
+    // Higher-order statistics
+    m.add_function(wrap_pyfunction!(higherorder::hjorth_parameters, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::hjorth_activity, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::hjorth_mobility, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::hjorth_complexity, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::higher_moments, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::central_moment_5, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::central_moment_6, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::central_moment_7, m)?)?;
+    m.add_function(wrap_pyfunction!(higherorder::central_moment_8, m)?)?;
+
     Ok(())
 }
