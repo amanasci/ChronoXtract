@@ -10,6 +10,7 @@ This directory contains comprehensive examples demonstrating ChronoXtract's capa
 
 ### Advanced Analysis
 - **[frequency_analysis.py](frequency_analysis.py)** - FFT and Lomb-Scargle periodogram examples
+- **[advanced_features.py](advanced_features.py)** - Entropy, Hjorth parameters, seasonality, and shape features
 - **[variability_analysis.py](variability_analysis.py)** - Fractional variability and timescale analysis
 
 ### Real-World Applications

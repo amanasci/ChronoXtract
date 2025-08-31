@@ -11,9 +11,13 @@ Welcome to the comprehensive user guide for ChronoXtract! This guide will help y
 5. [Frequency Domain Analysis](#frequency-domain-analysis)
 6. [Variability Analysis](#variability-analysis)
 7. [Correlation Analysis](#correlation-analysis)
-8. [Best Practices](#best-practices)
-9. [Performance Tips](#performance-tips)
-10. [Real-World Applications](#real-world-applications)
+8. [Higher-order Statistics](#higher-order-statistics)
+9. [Entropy and Information Theory](#entropy-and-information-theory)
+10. [Seasonality and Trend Analysis](#seasonality-and-trend-analysis)
+11. [Shape and Peak Features](#shape-and-peak-features)
+12. [Best Practices](#best-practices)
+13. [Performance Tips](#performance-tips)
+14. [Real-World Applications](#real-world-applications)
 
 ---
 
@@ -478,6 +482,207 @@ plt.xlabel('Lag')
 plt.ylabel('Correlation')
 plt.title('Z-transformed Discrete Correlation Function')
 plt.show()
+```
+
+---
+
+## Higher-order Statistics
+
+Higher-order statistics provide deeper insights into the signal characteristics beyond simple mean and variance. ChronoXtract includes Hjorth parameters and central moments for advanced signal analysis.
+
+### Hjorth Parameters
+
+Hjorth parameters are particularly useful for EEG signal analysis and other biomedical applications:
+
+```python
+import chronoxtract as ct
+import numpy as np
+
+# Generate a complex signal mimicking brain activity
+t = np.linspace(0, 10, 1000)
+eeg_like = (np.sin(2*np.pi*8*t) +  # Alpha wave (8 Hz)
+            0.5*np.sin(2*np.pi*13*t) +  # Beta wave (13 Hz)
+            0.3*np.sin(2*np.pi*30*t) +  # Gamma wave (30 Hz)
+            0.2*np.random.randn(1000))   # Noise
+
+hjorth = ct.hjorth_parameters(eeg_like.tolist())
+print(f"Activity (signal variance): {hjorth['activity']:.4f}")
+print(f"Mobility (mean frequency): {hjorth['mobility']:.4f}")
+print(f"Complexity (frequency spread): {hjorth['complexity']:.4f}")
+```
+
+### Central Moments
+
+Higher-order central moments capture fine details about data distribution:
+
+```python
+# Calculate higher-order moments
+moment_5 = ct.central_moment_5(eeg_like.tolist())
+moment_6 = ct.central_moment_6(eeg_like.tolist())
+print(f"5th central moment: {moment_5:.6f}")
+print(f"6th central moment: {moment_6:.6f}")
+```
+
+---
+
+## Entropy and Information Theory
+
+Entropy measures quantify the regularity and complexity of time series, valuable for signal classification and anomaly detection.
+
+### Sample Entropy for Signal Regularity
+
+Sample entropy measures the probability that patterns in a time series will repeat:
+
+```python
+import chronoxtract as ct
+import numpy as np
+
+# Compare regular vs irregular signals
+regular_signal = np.sin(np.linspace(0, 4*np.pi, 200)).tolist()
+irregular_signal = np.random.randn(200).tolist()
+
+entropy_regular = ct.sample_entropy(regular_signal, m=2, r=0.1)
+entropy_irregular = ct.sample_entropy(irregular_signal, m=2, r=0.1)
+
+print(f"Regular signal entropy: {entropy_regular:.4f} (lower = more regular)")
+print(f"Irregular signal entropy: {entropy_irregular:.4f}")
+```
+
+### Multiscale Entropy Analysis
+
+Analyze complexity across different time scales:
+
+```python
+# Multiscale entropy reveals complexity at different scales
+scales = ct.multiscale_entropy(irregular_signal, max_scale=5, m=2, r=0.1)
+for i, entropy in enumerate(scales, 1):
+    print(f"Scale {i}: {entropy:.4f}")
+```
+
+### Practical Applications
+
+- **Medical Signals**: Higher entropy often indicates pathological conditions
+- **Financial Data**: Entropy changes can signal market regime shifts
+- **Sensor Data**: Sudden entropy changes may indicate equipment failure
+
+---
+
+## Seasonality and Trend Analysis
+
+Understanding seasonal patterns and trends is crucial for forecasting and anomaly detection.
+
+### Seasonal Strength Detection
+
+```python
+import chronoxtract as ct
+import numpy as np
+
+# Generate time series with clear seasonal pattern
+t = np.linspace(0, 100, 1000)
+trend = 0.02 * t  # Linear trend
+seasonal = 2 * np.sin(2*np.pi*t/10)  # Period of 10
+noise = 0.5 * np.random.randn(1000)
+ts = trend + seasonal + noise
+
+# Analyze seasonal and trend strength
+strength = ct.seasonal_trend_strength(ts.tolist(), period=100)
+print(f"Seasonal strength: {strength['seasonal_strength']:.4f}")
+print(f"Trend strength: {strength['trend_strength']:.4f}")
+```
+
+### STL Decomposition
+
+Decompose time series into trend, seasonal, and remainder components:
+
+```python
+# Perform STL decomposition
+decomposition = ct.simple_stl_decomposition(ts.tolist(), period=100)
+
+trend_component = decomposition['trend']
+seasonal_component = decomposition['seasonal']
+remainder = decomposition['remainder']
+
+print(f"Decomposed into {len(trend_component)} trend points")
+print(f"Seasonal variance: {np.var(seasonal_component):.4f}")
+print(f"Remainder variance: {np.var(remainder):.4f}")
+```
+
+### Detrended Fluctuation Analysis
+
+Detect long-range correlations and scaling properties:
+
+```python
+dfa_results = ct.detrended_fluctuation_analysis(ts.tolist())
+scaling_exponent = dfa_results.get('scaling_exponent', 0)
+print(f"Scaling exponent: {scaling_exponent:.4f}")
+# Values around 0.5 indicate random walk, >0.5 indicates persistence
+```
+
+---
+
+## Shape and Peak Features
+
+Shape-based features capture morphological characteristics of time series patterns.
+
+### Zero Crossing Rate
+
+Measure signal oscillation frequency:
+
+```python
+import chronoxtract as ct
+import numpy as np
+
+# Compare signals with different oscillation rates
+high_freq = np.sin(20 * np.linspace(0, 2*np.pi, 1000))
+low_freq = np.sin(2 * np.linspace(0, 2*np.pi, 1000))
+
+zcr_high = ct.zero_crossing_rate(high_freq.tolist())
+zcr_low = ct.zero_crossing_rate(low_freq.tolist())
+
+print(f"High frequency ZCR: {zcr_high:.4f}")
+print(f"Low frequency ZCR: {zcr_low:.4f}")
+```
+
+### Peak Analysis
+
+Comprehensive peak detection and analysis:
+
+```python
+# Generate signal with clear peaks
+t = np.linspace(0, 10, 1000)
+signal = np.sin(t) + 0.5*np.sin(3*t) + 0.1*np.random.randn(1000)
+
+# Find peaks
+peaks = ct.find_peaks(signal.tolist(), height=0.5, distance=20)
+print(f"Found {len(peaks)} peaks")
+
+# Calculate peak prominence
+if peaks:
+    prominence = ct.peak_prominence(signal.tolist(), peaks)
+    print(f"Average peak prominence: {np.mean(prominence):.4f}")
+
+# Enhanced peak statistics
+peak_stats = ct.enhanced_peak_stats(signal.tolist())
+print(f"Peak-to-peak amplitude: {peak_stats.get('peak_to_peak_amplitude', 0):.4f}")
+```
+
+### Slope and Variability Features
+
+Analyze signal dynamics:
+
+```python
+# Slope analysis
+slope_features = ct.slope_features(signal.tolist())
+mean_slope = ct.mean_slope(signal.tolist())
+max_slope = ct.max_slope(signal.tolist())
+
+print(f"Mean slope: {mean_slope:.6f}")
+print(f"Maximum slope: {max_slope:.4f}")
+
+# Comprehensive variability analysis
+variability = ct.variability_features(signal.tolist())
+turning_points = ct.turning_points(signal.tolist())
+print(f"Turning points: {turning_points.get('count', 0)}")
 ```
 
 ---

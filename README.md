@@ -1,6 +1,6 @@
 # ChronoXtract
 
-![Version](https://img.shields.io/badge/version-0.0.2-blue.svg)
+![Version](https://img.shields.io/badge/version-0.1.0-blue.svg)
 ![Python](https://img.shields.io/badge/python-3.8+-blue.svg)
 ![License](https://img.shields.io/badge/license-MIT-green.svg)
 
@@ -32,6 +32,31 @@ ChronoXtract is a high-performance Python library for time series feature extrac
 - **Discrete Correlation Function (DCF)**: For analyzing two time series.
 - **Auto-Correlation Function (ACF)**: For analyzing a single time series.
 - **Z-transformed Discrete Correlation Function (ZDCF)**: An improved DCF method.
+
+### 🧠 **Higher-order Statistics**
+- **Hjorth Parameters**: Activity, mobility, and complexity measures
+- **Central Moments**: 5th through 8th order statistical moments
+- **Advanced Signal Characterization**: For biomedical and complex signal analysis
+
+### 🔍 **Entropy and Information Theory**
+- **Sample Entropy**: Measures signal regularity and predictability
+- **Approximate Entropy**: Quantifies pattern complexity
+- **Permutation Entropy**: Ordinal pattern-based complexity
+- **Multiscale Entropy**: Complexity analysis across time scales
+- **Lempel-Ziv Complexity**: Algorithmic complexity measure
+
+### 📅 **Seasonality and Trend Analysis**
+- **Seasonal Strength Detection**: Identify and quantify seasonal patterns
+- **STL Decomposition**: Separate trend, seasonal, and remainder components
+- **Detrended Fluctuation Analysis**: Detect long-range correlations
+- **Trend Strength**: Quantify directional movement in data
+
+### 🏔️ **Shape and Peak Features**
+- **Peak Detection**: Identify and analyze signal peaks
+- **Zero Crossing Rate**: Measure signal oscillation frequency
+- **Slope Analysis**: Mean slope, slope variance, and maximum slope
+- **Turning Points**: Identify local extrema and direction changes
+- **Energy Distribution**: Analyze signal energy characteristics
 
 ## 📦 Installation
 
@@ -118,32 +143,38 @@ ChronoXtract is built with Rust and PyO3, providing:
 - **High Performance**: 10-100x faster than pure Python implementations
 - **Memory Efficient**: Optimized memory usage for large datasets
 - **Type Safety**: Rust's type system prevents runtime errors
+- **Comprehensive**: 57+ statistical and analytical functions
+- **Versatile**: Supports both regular and irregularly sampled time series
 
 ## 🎯 Roadmap
 
-Our future plans include:
+### ✅ Recently Completed
+- **Peak Analysis**: Peak detection algorithms and prominence calculation
+- **Advanced Time Series Analysis**: Seasonality detection, trend analysis, and STL decomposition
+- **Entropy and Information Theory**: Sample entropy, permutation entropy, and multiscale entropy
+- **Higher-order Statistics**: Hjorth parameters and central moments
+- **Shape Features**: Zero crossing rate, slope analysis, and turning points
 
-### Planned Features
-- **Peak Analysis**:
-  - Peak detection algorithms
-  - Peak prominence and width calculation
-  - Burst detection
-- **Advanced Time Series Analysis**:
-  - Seasonality and trend analysis
-  - Anomaly detection algorithms
-  - Time series decomposition
+### 🚧 In Progress
+- **Enhanced Documentation**: Interactive Jupyter notebooks and video tutorials
+- **Advanced Anomaly Detection**: Machine learning-based outlier detection
+- **Performance Optimizations**: Parallel processing for ultra-large datasets
+
+### 📋 Planned Features
 - **Machine Learning Integration**:
   - Feature selection utilities
   - Automated feature extraction pipelines
-- **Performance Enhancements**:
-  - Parallel processing for large datasets
-  - Streaming algorithms for real-time analysis
-- **Additional Statistical Methods**:
-  - Correlation analysis
-  - Spectral density estimation
+  - Integration with scikit-learn and other ML libraries
+- **Streaming Algorithms**:
+  - Real-time analysis for continuous data streams
+  - Online statistical computation
+- **Advanced Signal Processing**:
   - Wavelet transforms
+  - Spectral density estimation
+  - Advanced filtering techniques
 - **Utility Functions**:
-  - Textual summary generation from statistical outputs
+  - Automated report generation from statistical outputs
+  - Data quality assessment tools
 
 ### Documentation Improvements
 - Interactive Jupyter notebooks
