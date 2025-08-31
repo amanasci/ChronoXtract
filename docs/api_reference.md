@@ -5,10 +5,16 @@ This document provides detailed information about all functions available in Chr
 ## Table of Contents
 
 - [Statistical Functions](#statistical-functions)
+- [Individual Statistical Functions](#individual-statistical-functions)
 - [Rolling Statistics](#rolling-statistics)
 - [Frequency Domain Analysis](#frequency-domain-analysis)
 - [Variability Analysis](#variability-analysis)
 - [Correlation Analysis](#correlation-analysis)
+- [Higher-order Statistics](#higher-order-statistics)
+- [Entropy and Information Theory](#entropy-and-information-theory)
+- [Seasonality and Trend Analysis](#seasonality-and-trend-analysis)
+- [Shape and Peak Features](#shape-and-peak-features)
+- [Peak Detection](#peak-detection)
 
 ---
 
@@ -66,6 +72,129 @@ data = [1, 2, 2, 3, 4, 4, 4, 5]
 mean, median, mode = ct.time_series_mean_median_mode(data)
 print(f"Mean: {mean}, Median: {median}, Mode: {mode}")
 ```
+
+---
+
+## Individual Statistical Functions
+
+### `calculate_mean(time_series)`
+
+Calculates the arithmetic mean of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Arithmetic mean of the time series
+
+**Example:**
+```python
+import chronoxtract as ct
+
+data = [1.0, 2.0, 3.0, 4.0, 5.0]
+mean = ct.calculate_mean(data)
+print(f"Mean: {mean}")  # Output: Mean: 3.0
+```
+
+### `calculate_median(time_series)`
+
+Calculates the median value of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Median value of the time series
+
+### `calculate_mode(time_series)`
+
+Calculates the mode (most frequently occurring value) of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Most frequently occurring value
+
+### `calculate_variance(time_series)`
+
+Calculates the variance of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Variance of the time series
+
+### `calculate_std_dev(time_series)`
+
+Calculates the standard deviation of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Standard deviation of the time series
+
+### `calculate_skewness(time_series)`
+
+Calculates the skewness (measure of asymmetry) of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Skewness value
+
+### `calculate_kurtosis(time_series)`
+
+Calculates the kurtosis (measure of tail heaviness) of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Kurtosis value
+
+### `calculate_min_max_range(time_series)`
+
+Calculates the minimum, maximum, and range of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing 'min', 'max', and 'range' values
+
+### `calculate_quantiles(time_series)`
+
+Calculates various quantiles of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing quantile values (q05, q25, q75, q95)
+
+### `calculate_sum(time_series)`
+
+Calculates the sum of all values in a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Sum of all values
+
+### `calculate_absolute_energy(time_series)`
+
+Calculates the absolute energy (sum of squared values) of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Absolute energy value
 
 ---
 
@@ -492,3 +621,439 @@ e2 = np.random.rand(100) * 0.1
 
 result = ct.zdcf_py(t1.tolist(), v1.tolist(), e1.tolist(), t2.tolist(), v2.tolist(), e2.tolist(), min_points=11, num_mc=100)
 ```
+
+---
+
+## Higher-order Statistics
+
+### `hjorth_parameters(time_series)`
+
+Calculates all three Hjorth parameters (activity, mobility, complexity) of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing 'activity', 'mobility', and 'complexity' values
+
+**Example:**
+```python
+import chronoxtract as ct
+import numpy as np
+
+# Generate a complex signal
+t = np.linspace(0, 10, 1000)
+signal = np.sin(2*np.pi*t) + 0.5*np.sin(6*np.pi*t) + 0.2*np.random.randn(1000)
+
+hjorth = ct.hjorth_parameters(signal.tolist())
+print(f"Activity: {hjorth['activity']:.4f}")
+print(f"Mobility: {hjorth['mobility']:.4f}")
+print(f"Complexity: {hjorth['complexity']:.4f}")
+```
+
+### `hjorth_activity(time_series)`
+
+Calculates the Hjorth activity parameter (variance of the signal).
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Activity parameter value
+
+### `hjorth_mobility(time_series)`
+
+Calculates the Hjorth mobility parameter (measure of mean frequency).
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Mobility parameter value
+
+### `hjorth_complexity(time_series)`
+
+Calculates the Hjorth complexity parameter (measure of frequency distribution).
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Complexity parameter value
+
+### `higher_moments(time_series)`
+
+Calculates higher-order statistical moments of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing higher-order moment values
+
+### `central_moment_5(time_series)` to `central_moment_8(time_series)`
+
+Calculate the 5th through 8th central moments of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Central moment value
+
+---
+
+## Entropy and Information Theory
+
+### `sample_entropy(time_series, m, r)`
+
+Calculates the sample entropy of a time series, measuring signal regularity.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `m` (int): Pattern length
+- `r` (float): Tolerance for matching
+
+**Returns:**
+- `float`: Sample entropy value
+
+**Example:**
+```python
+import chronoxtract as ct
+import numpy as np
+
+# Regular signal has low entropy
+regular = (np.sin(np.linspace(0, 4*np.pi, 100)) * 100).tolist()
+entropy_regular = ct.sample_entropy(regular, m=2, r=0.2)
+
+# Random signal has high entropy
+random = (np.random.randn(100) * 100).tolist()
+entropy_random = ct.sample_entropy(random, m=2, r=0.2)
+
+print(f"Regular signal entropy: {entropy_regular:.4f}")
+print(f"Random signal entropy: {entropy_random:.4f}")
+```
+
+### `approximate_entropy(time_series, m, r)`
+
+Calculates the approximate entropy of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `m` (int): Pattern length
+- `r` (float): Tolerance for matching
+
+**Returns:**
+- `float`: Approximate entropy value
+
+### `permutation_entropy(time_series, order)`
+
+Calculates the permutation entropy based on ordinal patterns.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `order` (int): Order of permutation patterns
+
+**Returns:**
+- `float`: Permutation entropy value
+
+### `lempel_ziv_complexity(time_series)`
+
+Calculates the Lempel-Ziv complexity of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Lempel-Ziv complexity value
+
+### `multiscale_entropy(time_series, max_scale, m, r)`
+
+Calculates multiscale entropy across different time scales.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `max_scale` (int): Maximum scale factor
+- `m` (int): Pattern length
+- `r` (float): Tolerance for matching
+
+**Returns:**
+- `List[float]`: Entropy values at different scales
+
+---
+
+## Seasonality and Trend Analysis
+
+### `seasonal_trend_strength(time_series, period)`
+
+Calculates both seasonal and trend strength of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `period` (int): Seasonal period
+
+**Returns:**
+- `dict`: Dictionary containing 'seasonal_strength' and 'trend_strength' values
+
+**Example:**
+```python
+import chronoxtract as ct
+import numpy as np
+
+# Generate time series with trend and seasonality
+t = np.linspace(0, 100, 1000)
+trend = 0.02 * t
+seasonal = 2 * np.sin(2*np.pi*t/10)  # Period of 10
+noise = 0.5 * np.random.randn(1000)
+ts = trend + seasonal + noise
+
+strengths = ct.seasonal_trend_strength(ts.tolist(), period=100)
+print(f"Seasonal strength: {strengths['seasonal_strength']:.4f}")
+print(f"Trend strength: {strengths['trend_strength']:.4f}")
+```
+
+### `seasonal_strength(time_series, period)`
+
+Calculates the seasonal strength of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `period` (int): Seasonal period
+
+**Returns:**
+- `float`: Seasonal strength value
+
+### `trend_strength(time_series)`
+
+Calculates the trend strength of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Trend strength value
+
+### `simple_stl_decomposition(time_series, period)`
+
+Performs a simple STL (Seasonal and Trend decomposition using Loess) decomposition.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `period` (int): Seasonal period
+
+**Returns:**
+- `dict`: Dictionary containing 'trend', 'seasonal', and 'remainder' components
+
+### `detect_seasonality(time_series)`
+
+Detects potential seasonal patterns in a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing seasonality detection results
+
+### `detrended_fluctuation_analysis(time_series)`
+
+Performs detrended fluctuation analysis to detect long-range correlations.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing DFA results including scaling exponent
+
+---
+
+## Shape and Peak Features
+
+### `zero_crossing_rate(time_series)`
+
+Calculates the zero crossing rate of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Zero crossing rate value
+
+**Example:**
+```python
+import chronoxtract as ct
+import numpy as np
+
+# High frequency signal has high zero crossing rate
+high_freq = np.sin(20 * np.linspace(0, 2*np.pi, 1000))
+zcr_high = ct.zero_crossing_rate(high_freq.tolist())
+
+# Low frequency signal has low zero crossing rate
+low_freq = np.sin(2 * np.linspace(0, 2*np.pi, 1000))
+zcr_low = ct.zero_crossing_rate(low_freq.tolist())
+
+print(f"High freq ZCR: {zcr_high:.4f}")
+print(f"Low freq ZCR: {zcr_low:.4f}")
+```
+
+### `slope_features(time_series)`
+
+Calculates comprehensive slope-based features of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing various slope-based features
+
+### `mean_slope(time_series)`
+
+Calculates the mean slope of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Mean slope value
+
+### `slope_variance(time_series)`
+
+Calculates the variance of slopes in a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Slope variance value
+
+### `max_slope(time_series)`
+
+Calculates the maximum absolute slope in a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Maximum slope value
+
+### `enhanced_peak_stats(time_series)`
+
+Calculates enhanced peak statistics including various peak-related measures.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing comprehensive peak statistics
+
+### `peak_to_peak_amplitude(time_series)`
+
+Calculates the peak-to-peak amplitude of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `float`: Peak-to-peak amplitude value
+
+### `variability_features(time_series)`
+
+Calculates comprehensive variability features of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing various variability measures
+
+### `turning_points(time_series)`
+
+Identifies and counts turning points in a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing turning point statistics
+
+### `energy_distribution(time_series)`
+
+Calculates the energy distribution characteristics of a time series.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+
+**Returns:**
+- `dict`: Dictionary containing energy distribution measures
+
+---
+
+## Peak Detection
+
+### `find_peaks(time_series, height, distance)`
+
+Finds peaks in a time series based on height and distance criteria.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `height` (float): Minimum peak height
+- `distance` (int): Minimum distance between peaks
+
+**Returns:**
+- `List[int]`: Indices of detected peaks
+
+**Example:**
+```python
+import chronoxtract as ct
+import numpy as np
+
+# Generate signal with clear peaks
+t = np.linspace(0, 10, 1000)
+signal = np.sin(t) + 0.5*np.sin(3*t) + 0.1*np.random.randn(1000)
+
+peaks = ct.find_peaks(signal.tolist(), height=0.5, distance=20)
+print(f"Found {len(peaks)} peaks at indices: {peaks[:5]}...")
+```
+
+### `peak_prominence(time_series, peaks)`
+
+Calculates the prominence of detected peaks.
+
+**Parameters:**
+- `time_series` (List[float]): Input time series data
+- `peaks` (List[int]): Indices of peaks
+
+**Returns:**
+- `List[float]`: Prominence values for each peak
+
+### `variability_statistics(flux, flux_err)`
+
+Calculates comprehensive variability statistics for astronomical or financial time series.
+
+**Parameters:**
+- `flux` (List[float]): Flux or value measurements
+- `flux_err` (List[float]): Error values
+
+**Returns:**
+- `dict`: Dictionary containing comprehensive variability statistics
+
+---
+
+## Error Handling
+
+All functions include comprehensive error handling for:
+- Empty input arrays
+- Invalid parameter values
+- Numerical stability issues
+- Type conversion errors
+
+When errors occur, functions will raise appropriate Python exceptions with descriptive messages.
+
+---
+
+## Performance Notes
+
+- All functions are implemented in Rust for optimal performance
+- Memory usage is optimized for large datasets
+- Functions are thread-safe and can be used in parallel processing
+- Input validation is performed efficiently without significant overhead
+- For very large datasets (>1M points), consider using streaming algorithms where available
