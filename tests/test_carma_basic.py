@@ -8,7 +8,8 @@ import sys
 import os
 
 # Add the build directory to Python path
-sys.path.insert(0, '/home/runner/work/ChronoXtract/ChronoXtract/target/debug')
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(project_root, 'target', 'debug'))
 
 try:
     import chronoxtract as ct
