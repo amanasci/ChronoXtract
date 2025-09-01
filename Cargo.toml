@@ -19,6 +19,8 @@ nalgebra = "0.32"
 argmin = "0.9"
 thiserror = "1.0"
 num-complex = "0.4"
+rayon = "1.11"
+statrs = "0.17"
 
 [dependencies.pyo3]
 version = "0.20"

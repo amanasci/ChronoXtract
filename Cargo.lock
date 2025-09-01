@@ -173,7 +173,9 @@ dependencies = [
  "pyo3",
  "rand",
  "rand_distr",
+ "rayon",
  "rustfft",
+ "statrs",
  "thiserror",
 ]
 
@@ -499,6 +501,8 @@ dependencies = [
  "num-complex",
  "num-rational",
  "num-traits",
+ "rand",
+ "rand_distr",
  "simba",
  "typenum",
 ]
@@ -1039,6 +1043,18 @@ name = "smallvec"
 version = "1.15.1"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "67b1b7a3b5fe4f1376887184045fcf45c69e92af734b7aaddc05fb777b6fbd03"
+
+[[package]]
+name = "statrs"
+version = "0.17.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "f697a07e4606a0a25c044de247e583a330dbb1731d11bc7350b81f48ad567255"
+dependencies = [
+ "approx",
+ "nalgebra",
+ "num-traits",
+ "rand",
+]
 
 [[package]]
 name = "strength_reduce"

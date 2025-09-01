@@ -15,6 +15,8 @@ pub enum CarmaError {
     ConvergenceError(String),
     #[error("Invalid data: {0}")]
     InvalidData(String),
+    #[error("Optimization failed: {0}")]
+    OptimizationFailed(String),
 }
 
 impl From<CarmaError> for PyErr {
