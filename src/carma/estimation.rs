@@ -521,7 +521,7 @@ fn get_parameter_bounds(p: usize, q: usize) -> Vec<(f64, f64)> {
 
 /// Estimate proposal scales based on parameter values
 fn estimate_proposal_scales(params: &[f64]) -> Vec<f64> {
-    params.iter().map(|&p| (p.abs() * 0.2).max(0.05)).collect() // More conservative initial steps
+    params.iter().map(|&p| (p.abs() * 0.08).max(0.01)).collect() // Smaller proposal for target acceptance rate
 }
 
 /// Propose new parameters using multivariate normal random walk
