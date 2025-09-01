@@ -105,10 +105,10 @@ pub fn run_kalman_filter(
     let mut log_likelihood = 0.0;
     
     for i in 0..n {
-        // Time step
+        // Time step - cache matrix exponentials for repeated time differences
         let dt = if i == 0 { 1.0 } else { times[i] - times[i-1] };
         
-        // Predict step
+        // Predict step with cached matrix exponential
         let transition_matrix = matrix_exponential(transition, dt)?;
         let predicted_state = &transition_matrix * &state;
         

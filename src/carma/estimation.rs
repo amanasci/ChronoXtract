@@ -111,7 +111,7 @@ pub fn carma_mcmc(
     Ok(result)
 }
 
-/// Parallel MLE optimization using multiple starting points
+/// Parallel MLE optimization using multiple starting points (with size-based strategy)
 pub fn perform_parallel_mle_optimization(
     times: &[f64],
     values: &[f64],
@@ -121,7 +121,15 @@ pub fn perform_parallel_mle_optimization(
     max_iter: usize,
     tolerance: f64,
 ) -> Result<CarmaFitResult, CarmaError> {
-    let n_starts = 8; // Number of parallel starting points
+    let data_size = times.len();
+    
+    // Use parallel optimization only for larger datasets where overhead is justified
+    if data_size < 200 {
+        // For small datasets, sequential is faster
+        return perform_mle_optimization_simple(times, values, errors, p, q, max_iter, tolerance);
+    }
+    
+    let n_starts = 4; // Reduced number for better efficiency
     
     // Generate multiple starting points
     let starting_points: Vec<Vec<f64>> = (0..n_starts).into_par_iter()
@@ -152,7 +160,7 @@ pub fn perform_parallel_mle_optimization(
         }
     }
     
-    best_result.ok_or_else(|| CarmaError::OptimizationFailed("All optimization attempts failed".to_string()))
+    best_result.ok_or_else(|| CarmaError::OptimizationFailed("All parallel optimizations failed".to_string()))
 }
 
 /// Generate random starting point for optimization
@@ -377,7 +385,7 @@ pub fn perform_method_of_moments(
     })
 }
 
-/// Perform MCMC sampling using Metropolis-Hastings algorithm
+/// Perform MCMC sampling using Metropolis-Hastings algorithm with multiple chains
 fn perform_mcmc_sampling(
     times: &[f64],
     values: &[f64],
@@ -388,72 +396,107 @@ fn perform_mcmc_sampling(
     burn_in: usize,
     seed: Option<u64>,
 ) -> Result<CarmaMCMCResult, CarmaError> {
-    let mut rng = match seed {
-        Some(s) => StdRng::seed_from_u64(s),
-        None => StdRng::from_entropy(),
-    };
-    
-    // Get initial parameter estimate using MLE
-    let initial_result = perform_mle_optimization_simple(times, values, errors, p, q, 1000, 1e-6)?;
-    let mut current_params = initial_result.model.to_param_vector();
-    let mut current_loglik = initial_result.loglikelihood;
-    
-    // Parameter bounds and proposal distributions
-    let param_bounds = get_parameter_bounds(p, q);
-    let mut proposal_scales = estimate_proposal_scales(&current_params);
-    
-    // Storage for samples
-    let total_samples = n_samples + burn_in;
-    let mut all_samples = Vec::with_capacity(total_samples);
-    let mut acceptance_count = 0;
-    
-    // MCMC iterations
-    for i in 0..total_samples {
-        // Propose new parameters
-        let proposal_params = propose_parameters(&current_params, &proposal_scales, &param_bounds, &mut rng)?;
+    let n_chains = 4; // Use multiple chains for better R-hat computation
+    let samples_per_chain = n_samples / n_chains;
+    let mut all_chain_samples = Vec::new();
+    let mut total_acceptance = 0.0;
+
+    // Run multiple independent chains
+    for chain_id in 0..n_chains {
+        let chain_seed = seed.map(|s| s + chain_id as u64);
+        let mut rng = match chain_seed {
+            Some(s) => StdRng::seed_from_u64(s),
+            None => StdRng::from_entropy(),
+        };
         
-        // Evaluate likelihood at proposal
-        if let Ok(mut proposal_model) = CarmaModel::new(p, q) {
-            if proposal_model.from_param_vector(&proposal_params).is_ok() {
-                if let Ok(proposal_loglik) = compute_log_likelihood(&proposal_model, times, values, errors) {
-                    // Metropolis-Hastings acceptance criterion
-                    let log_ratio = proposal_loglik - current_loglik;
-                    let accept_prob = log_ratio.exp().min(1.0);
-                    
-                    if rng.gen::<f64>() < accept_prob {
-                        // Accept proposal
-                        current_params = proposal_params;
-                        current_loglik = proposal_loglik;
-                        acceptance_count += 1;
-                    }
+        // Get initial parameter estimate using MLE with some randomness
+        let initial_result = perform_mle_optimization_simple(times, values, errors, p, q, 1000, 1e-6)?;
+        let mut current_params = initial_result.model.to_param_vector();
+        
+        // Add some noise to initial parameters for chain diversity
+        for param in &mut current_params {
+            *param += rng.gen_range(-0.1..0.1) * param.abs().max(0.1);
+        }
+        
+        let mut current_loglik = match compute_log_likelihood_from_params(&current_params, times, values, errors, p, q) {
+            Ok(loglik) => loglik,
+            Err(_) => initial_result.loglikelihood,
+        };
+        
+        // Parameter bounds and proposal distributions
+        let param_bounds = get_parameter_bounds(p, q);
+        let mut proposal_scales = estimate_proposal_scales(&current_params);
+        
+        // Storage for this chain's samples
+        let total_samples = samples_per_chain + burn_in;
+        let mut chain_samples = Vec::with_capacity(samples_per_chain);
+        let mut acceptance_count = 0;
+        
+        // MCMC iterations for this chain
+        for i in 0..total_samples {
+            // Propose new parameters
+            let proposal_params = propose_parameters(&current_params, &proposal_scales, &param_bounds, &mut rng)?;
+            
+            // Evaluate likelihood at proposal
+            if let Ok(proposal_loglik) = compute_log_likelihood_from_params(&proposal_params, times, values, errors, p, q) {
+                // Metropolis-Hastings acceptance criterion
+                let log_ratio = proposal_loglik - current_loglik;
+                let accept_prob = log_ratio.exp().min(1.0);
+                
+                if rng.gen::<f64>() < accept_prob {
+                    // Accept proposal
+                    current_params = proposal_params;
+                    current_loglik = proposal_loglik;
+                    acceptance_count += 1;
                 }
+            }
+            
+            // Store sample after burn-in
+            if i >= burn_in {
+                chain_samples.push(current_params.clone());
+            }
+            
+            // Adaptive proposal scaling during burn-in
+            if i < burn_in && i > 0 && i % 50 == 0 {
+                let recent_acceptance = acceptance_count as f64 / (i + 1) as f64;
+                adaptive_proposal_scaling(&mut proposal_scales, recent_acceptance);
             }
         }
         
-        // Store sample (after burn-in period)
-        all_samples.push(current_params.clone());
-        
-        // Adaptive proposal scaling during burn-in
-        if i < burn_in && i > 0 && i % 100 == 0 {
-            let recent_acceptance = acceptance_count as f64 / (i + 1) as f64;
-            adaptive_proposal_scaling(&mut proposal_scales, recent_acceptance);
-        }
+        let chain_acceptance_rate = acceptance_count as f64 / total_samples as f64;
+        total_acceptance += chain_acceptance_rate;
+        all_chain_samples.push(chain_samples);
     }
     
-    // Remove burn-in samples
-    let samples: Vec<Vec<f64>> = all_samples.into_iter().skip(burn_in).collect();
-    let acceptance_rate = acceptance_count as f64 / total_samples as f64;
+    // Compute MCMC diagnostics with multiple chains (before combining)
+    let rhat = compute_rhat_multiple_chains(&all_chain_samples);
     
-    // Compute MCMC diagnostics
-    let effective_sample_size = compute_effective_sample_size(&samples);
-    let rhat = compute_rhat(&samples);
+    // Combine all chains for final analysis
+    let combined_samples: Vec<Vec<f64>> = all_chain_samples.into_iter().flatten().collect();
+    let acceptance_rate = total_acceptance / n_chains as f64;
+    
+    let effective_sample_size = compute_effective_sample_size(&combined_samples);
     
     Ok(CarmaMCMCResult {
-        samples,
+        samples: combined_samples,
         acceptance_rate,
         effective_sample_size,
         rhat,
     })
+}
+
+/// Compute log likelihood from parameter vector
+fn compute_log_likelihood_from_params(
+    params: &[f64],
+    times: &[f64],
+    values: &[f64],
+    errors: Option<&[f64]>,
+    p: usize,
+    q: usize,
+) -> Result<f64, CarmaError> {
+    let mut model = CarmaModel::new(p, q)?;
+    model.from_param_vector(params)?;
+    compute_log_likelihood(&model, times, values, errors)
 }
 
 /// Get parameter bounds for CARMA model
@@ -478,7 +521,7 @@ fn get_parameter_bounds(p: usize, q: usize) -> Vec<(f64, f64)> {
 
 /// Estimate proposal scales based on parameter values
 fn estimate_proposal_scales(params: &[f64]) -> Vec<f64> {
-    params.iter().map(|&p| (p.abs() * 0.5).max(0.1)).collect() // Larger initial steps
+    params.iter().map(|&p| (p.abs() * 0.2).max(0.05)).collect() // More conservative initial steps
 }
 
 /// Propose new parameters using multivariate normal random walk
@@ -548,7 +591,56 @@ fn compute_effective_sample_size(samples: &[Vec<f64>]) -> Vec<f64> {
     ess
 }
 
-/// Compute R-hat diagnostic for convergence assessment
+/// Compute R-hat diagnostic for convergence assessment with multiple chains
+fn compute_rhat_multiple_chains(all_chains: &[Vec<Vec<f64>>]) -> Vec<f64> {
+    if all_chains.is_empty() || all_chains[0].is_empty() {
+        return vec![1.0];
+    }
+    
+    let n_chains = all_chains.len();
+    let n_params = all_chains[0][0].len();
+    let chain_length = all_chains[0].len();
+    
+    if n_chains < 2 || chain_length < 10 {
+        return vec![1.0; n_params];
+    }
+    
+    let mut rhat = Vec::with_capacity(n_params);
+    
+    for param_idx in 0..n_params {
+        // Collect parameter values across all chains
+        let mut chain_means = Vec::new();
+        let mut chain_vars = Vec::new();
+        
+        for chain in all_chains {
+            let values: Vec<f64> = chain.iter().map(|s| s[param_idx]).collect();
+            let mean = values.iter().sum::<f64>() / values.len() as f64;
+            let var = values.iter().map(|&x| (x - mean).powi(2)).sum::<f64>() / (values.len() - 1) as f64;
+            
+            chain_means.push(mean);
+            chain_vars.push(var);
+        }
+        
+        // Compute R-hat statistic
+        let overall_mean = chain_means.iter().sum::<f64>() / n_chains as f64;
+        let within_chain_var = chain_vars.iter().sum::<f64>() / n_chains as f64;
+        let between_chain_var = chain_length as f64 * 
+            chain_means.iter().map(|&m| (m - overall_mean).powi(2)).sum::<f64>() / (n_chains - 1) as f64;
+        
+        let var_plus = ((chain_length - 1) as f64 * within_chain_var + between_chain_var) / chain_length as f64;
+        let rhat_val = if within_chain_var > 0.0 {
+            (var_plus / within_chain_var).sqrt()
+        } else {
+            1.0
+        };
+        
+        rhat.push(if rhat_val.is_finite() && rhat_val > 0.0 { rhat_val } else { 1.0 });
+    }
+    
+    rhat
+}
+
+/// Compute R-hat diagnostic for convergence assessment (single chain fallback)
 fn compute_rhat(samples: &[Vec<f64>]) -> Vec<f64> {
     if samples.len() < 4 {
         // Not enough samples for R-hat computation
@@ -567,17 +659,22 @@ fn compute_rhat(samples: &[Vec<f64>]) -> Vec<f64> {
         let values1: Vec<f64> = chain1.iter().map(|s| s[param_idx]).collect();
         let values2: Vec<f64> = chain2.iter().map(|s| s[param_idx]).collect();
         
-        let mean1 = values1.iter().copied().collect::<Vec<_>>().mean();
-        let mean2 = values2.iter().copied().collect::<Vec<_>>().mean();
-        let var1 = values1.iter().copied().collect::<Vec<_>>().variance();
-        let var2 = values2.iter().copied().collect::<Vec<_>>().variance();
+        let mean1 = values1.iter().sum::<f64>() / values1.len() as f64;
+        let mean2 = values2.iter().sum::<f64>() / values2.len() as f64;
+        
+        let var1 = values1.iter().map(|&x| (x - mean1).powi(2)).sum::<f64>() / (values1.len() - 1) as f64;
+        let var2 = values2.iter().map(|&x| (x - mean2).powi(2)).sum::<f64>() / (values2.len() - 1) as f64;
         
         let overall_mean = (mean1 + mean2) / 2.0;
         let within_chain_var = (var1 + var2) / 2.0;
         let between_chain_var = mid as f64 * ((mean1 - overall_mean).powi(2) + (mean2 - overall_mean).powi(2)) / 1.0;
         
         let var_plus = ((mid - 1) as f64 * within_chain_var + between_chain_var) / mid as f64;
-        let rhat_val = (var_plus / within_chain_var).sqrt();
+        let rhat_val = if within_chain_var > 0.0 {
+            (var_plus / within_chain_var).sqrt()
+        } else {
+            1.0
+        };
         
         rhat.push(if rhat_val.is_finite() { rhat_val } else { 1.0 });
     }
