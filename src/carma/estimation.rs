@@ -478,7 +478,7 @@ fn get_parameter_bounds(p: usize, q: usize) -> Vec<(f64, f64)> {
 
 /// Estimate proposal scales based on parameter values
 fn estimate_proposal_scales(params: &[f64]) -> Vec<f64> {
-    params.iter().map(|&p| (p.abs() * 0.1).max(0.01)).collect()
+    params.iter().map(|&p| (p.abs() * 0.5).max(0.1)).collect() // Larger initial steps
 }
 
 /// Propose new parameters using multivariate normal random walk
@@ -509,11 +509,15 @@ fn propose_parameters(
 /// Adaptive proposal scaling during burn-in
 fn adaptive_proposal_scaling(scales: &mut [f64], acceptance_rate: f64) {
     let target_rate = 0.44; // Optimal acceptance rate for random walk MH
-    let adaptation_factor = if acceptance_rate > target_rate { 1.1 } else { 0.9 };
+    let adaptation_factor = if acceptance_rate > target_rate { 
+        1.05 // Smaller adjustment to avoid overcorrection
+    } else { 
+        0.95 
+    };
     
     for scale in scales.iter_mut() {
         *scale *= adaptation_factor;
-        *scale = scale.max(1e-6).min(10.0); // Keep reasonable bounds
+        *scale = scale.max(1e-4).min(5.0); // Keep reasonable bounds
     }
 }
 

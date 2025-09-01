@@ -115,8 +115,20 @@ pub fn generate_irregular_carma(
     let observation = DVector::from_vec(ss.observation_vector);
     let process_noise = DMatrix::from_vec(p, p, ss.process_noise_matrix.into_iter().flatten().collect());
     
-    // Initialize state
+    // Initialize state from stationary distribution
     let mut state = DVector::zeros(p);
+    
+    // Sample initial state from stationary distribution
+    let steady_state_cov = solve_lyapunov(&(-&transition), &process_noise)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    
+    let normal = Normal::new(0.0, 1.0)
+        .map_err(|_| pyo3::exceptions::PyValueError::new_err("Failed to create normal distribution"))?;
+    
+    let initial_noise = generate_multivariate_normal(&steady_state_cov, &mut rng, &normal)
+        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    
+    state = initial_noise;
     
     // Simulate
     let values = simulate_carma_process(&transition, &observation, &process_noise, 
