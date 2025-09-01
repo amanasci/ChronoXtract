@@ -425,9 +425,9 @@ mod tests {
             let result = carma_information_criteria(
                 times.readonly(),
                 values.readonly(),
-                None,
                 2,
                 1,
+                None,
             );
             
             assert!(result.is_ok());
