@@ -3,11 +3,10 @@ use numpy::PyReadonlyArray1;
 use std::collections::HashMap;
 use crate::carma::carma_model::{CarmaModel, CarmaFitResult, CarmaMCMCResult, CarmaError};
 use crate::carma::utils::{validate_time_series, carma_to_state_space};
-use nalgebra::{DMatrix, DVector};
+use nalgebra::{DMatrix, DVector, Cholesky};
 use rand::prelude::*;
-use rand_distr::{Normal, Uniform};
+use rand_distr::Normal;
 use rayon::prelude::*;
-use statrs::statistics::Statistics;
 
 /// Maximum likelihood estimation for CARMA model with parallelization support
 #[pyfunction]
@@ -385,7 +384,7 @@ pub fn perform_method_of_moments(
     })
 }
 
-/// Perform MCMC sampling using Metropolis-Hastings algorithm with multiple chains
+/// Perform MCMC sampling using improved Adaptive Metropolis algorithm with multiple chains
 fn perform_mcmc_sampling(
     times: &[f64],
     values: &[f64],
@@ -401,71 +400,21 @@ fn perform_mcmc_sampling(
     let mut all_chain_samples = Vec::new();
     let mut total_acceptance = 0.0;
 
-    // Run multiple independent chains
-    for chain_id in 0..n_chains {
-        let chain_seed = seed.map(|s| s + chain_id as u64);
-        let mut rng = match chain_seed {
-            Some(s) => StdRng::seed_from_u64(s),
-            None => StdRng::from_entropy(),
-        };
-        
-        // Get initial parameter estimate using MLE with some randomness
-        let initial_result = perform_mle_optimization_simple(times, values, errors, p, q, 1000, 1e-6)?;
-        let mut current_params = initial_result.model.to_param_vector();
-        
-        // Add some noise to initial parameters for chain diversity
-        for param in &mut current_params {
-            *param += rng.gen_range(-0.1..0.1) * param.abs().max(0.1);
-        }
-        
-        let mut current_loglik = match compute_log_likelihood_from_params(&current_params, times, values, errors, p, q) {
-            Ok(loglik) => loglik,
-            Err(_) => initial_result.loglikelihood,
-        };
-        
-        // Parameter bounds and proposal distributions
-        let param_bounds = get_parameter_bounds(p, q);
-        let mut proposal_scales = estimate_proposal_scales(&current_params);
-        
-        // Storage for this chain's samples
-        let total_samples = samples_per_chain + burn_in;
-        let mut chain_samples = Vec::with_capacity(samples_per_chain);
-        let mut acceptance_count = 0;
-        
-        // MCMC iterations for this chain
-        for i in 0..total_samples {
-            // Propose new parameters
-            let proposal_params = propose_parameters(&current_params, &proposal_scales, &param_bounds, &mut rng)?;
-            
-            // Evaluate likelihood at proposal
-            if let Ok(proposal_loglik) = compute_log_likelihood_from_params(&proposal_params, times, values, errors, p, q) {
-                // Metropolis-Hastings acceptance criterion
-                let log_ratio = proposal_loglik - current_loglik;
-                let accept_prob = log_ratio.exp().min(1.0);
-                
-                if rng.gen::<f64>() < accept_prob {
-                    // Accept proposal
-                    current_params = proposal_params;
-                    current_loglik = proposal_loglik;
-                    acceptance_count += 1;
-                }
-            }
-            
-            // Store sample after burn-in
-            if i >= burn_in {
-                chain_samples.push(current_params.clone());
-            }
-            
-            // Adaptive proposal scaling during burn-in
-            if i < burn_in && i > 0 && i % 50 == 0 {
-                let recent_acceptance = acceptance_count as f64 / (i + 1) as f64;
-                adaptive_proposal_scaling(&mut proposal_scales, recent_acceptance);
-            }
-        }
-        
-        let chain_acceptance_rate = acceptance_count as f64 / total_samples as f64;
-        total_acceptance += chain_acceptance_rate;
+    // Run multiple independent chains in parallel for better performance
+    let chain_results: Vec<_> = (0..n_chains).into_par_iter().map(|chain_id| {
+        run_adaptive_mcmc_chain(
+            times, values, errors, p, q, 
+            samples_per_chain, burn_in, 
+            seed.map(|s| s + chain_id as u64),
+            chain_id
+        )
+    }).collect();
+
+    // Collect results from all chains
+    for result in chain_results {
+        let (chain_samples, chain_acceptance) = result?;
         all_chain_samples.push(chain_samples);
+        total_acceptance += chain_acceptance;
     }
     
     // Compute MCMC diagnostics with multiple chains (before combining)
@@ -485,6 +434,100 @@ fn perform_mcmc_sampling(
     })
 }
 
+/// Run a single MCMC chain with adaptive multivariate proposals
+fn run_adaptive_mcmc_chain(
+    times: &[f64],
+    values: &[f64],
+    errors: Option<&[f64]>,
+    p: usize,
+    q: usize,
+    n_samples: usize,
+    burn_in: usize,
+    seed: Option<u64>,
+    chain_id: usize,
+) -> Result<(Vec<Vec<f64>>, f64), CarmaError> {
+    let mut rng = match seed {
+        Some(s) => StdRng::seed_from_u64(s),
+        None => StdRng::from_entropy(),
+    };
+    
+    // Get initial parameter estimate using MLE with chain-specific randomness
+    let initial_result = perform_mle_optimization_simple(times, values, errors, p, q, 500, 1e-6)?;
+    let mut current_params = initial_result.model.to_param_vector();
+    let n_params = current_params.len();
+    
+    // Add chain-specific noise to initial parameters for diversity
+    let noise_scale = 0.05 + 0.1 * chain_id as f64 / 4.0; // Different noise for each chain
+    for param in &mut current_params {
+        *param += rng.gen_range(-noise_scale..noise_scale) * param.abs().max(0.1);
+    }
+    
+    let mut current_loglik = match compute_log_likelihood_from_params(&current_params, times, values, errors, p, q) {
+        Ok(loglik) => loglik,
+        Err(_) => initial_result.loglikelihood,
+    };
+    
+    // Parameter bounds for CARMA stability
+    let param_bounds = get_parameter_bounds(p, q);
+    
+    // Initialize adaptive covariance matrix
+    let mut proposal_cov = DMatrix::identity(n_params, n_params) * 0.01; // Start with small diagonal
+    let mut sample_mean = DVector::from_vec(current_params.clone());
+    let mut sample_cov = DMatrix::zeros(n_params, n_params);
+    let mut adaptation_samples = Vec::new();
+    
+    // MCMC sampling parameters
+    let total_samples = n_samples + burn_in;
+    let mut chain_samples = Vec::with_capacity(n_samples);
+    let mut acceptance_count = 0;
+    let adaptation_start = burn_in / 4; // Start adapting after some initial burn-in
+    let adaptation_interval = 25; // Adapt every 25 iterations
+    
+    // MCMC iterations
+    for i in 0..total_samples {
+        // Propose new parameters using current covariance
+        let proposal_params = if i >= adaptation_start && adaptation_samples.len() > n_params {
+            // Use adaptive multivariate proposal
+            propose_parameters_adaptive(&current_params, &proposal_cov, &param_bounds, &mut rng)?
+        } else {
+            // Use simple univariate proposals during initial burn-in
+            propose_parameters_simple(&current_params, &param_bounds, &mut rng)?
+        };
+        
+        // Evaluate likelihood at proposal with caching for efficiency
+        if let Ok(proposal_loglik) = compute_log_likelihood_from_params(&proposal_params, times, values, errors, p, q) {
+            // Metropolis-Hastings acceptance criterion
+            let log_ratio = proposal_loglik - current_loglik;
+            let accept_prob = log_ratio.exp().min(1.0);
+            
+            if rng.gen::<f64>() < accept_prob {
+                // Accept proposal
+                current_params = proposal_params;
+                current_loglik = proposal_loglik;
+                acceptance_count += 1;
+            }
+        }
+        
+        // Store sample for adaptation during burn-in
+        if i >= adaptation_start && i < burn_in {
+            adaptation_samples.push(current_params.clone());
+            
+            // Update adaptive covariance every adaptation_interval iterations
+            if adaptation_samples.len() >= adaptation_interval && adaptation_samples.len() % adaptation_interval == 0 {
+                update_adaptive_covariance(&adaptation_samples, &mut proposal_cov, &mut sample_mean, &mut sample_cov)?;
+            }
+        }
+        
+        // Store sample after burn-in for final results
+        if i >= burn_in {
+            chain_samples.push(current_params.clone());
+        }
+    }
+    
+    let chain_acceptance_rate = acceptance_count as f64 / total_samples as f64;
+    Ok((chain_samples, chain_acceptance_rate))
+}
+
 /// Compute log likelihood from parameter vector
 fn compute_log_likelihood_from_params(
     params: &[f64],
@@ -500,68 +543,171 @@ fn compute_log_likelihood_from_params(
 }
 
 /// Get parameter bounds for CARMA model
+/// Get improved parameter bounds for CARMA model with stability constraints
 fn get_parameter_bounds(p: usize, q: usize) -> Vec<(f64, f64)> {
     let mut bounds = Vec::new();
     
-    // AR parameter bounds (stability constraints)
-    for _ in 0..p {
-        bounds.push((-0.99, 0.99));
+    // AR parameter bounds with tighter stability constraints for higher order models
+    // For higher order CARMA, individual AR coefficients should be more constrained
+    let ar_bound = match p {
+        1 => 0.95,
+        2 => 0.90,
+        3 => 0.85,
+        4 => 0.80,
+        _ => 0.75, // Even tighter for very high order
+    };
+    
+    for i in 0..p {
+        // First AR coefficient can be larger, subsequent ones should be smaller
+        let bound_scale = if i == 0 { 1.0 } else { 0.5 + 0.5 / (i as f64 + 1.0) };
+        let bound = ar_bound * bound_scale;
+        bounds.push((-bound, bound));
     }
     
-    // MA parameter bounds  
-    for _ in 0..=q {
-        bounds.push((-10.0, 10.0));
+    // MA parameter bounds - more restrictive for numerical stability
+    for i in 0..=q {
+        if i == 0 {
+            // First MA coefficient is typically normalized to 1, but allow some flexibility
+            bounds.push((0.1, 2.0));
+        } else {
+            // Higher order MA coefficients should be bounded more tightly
+            let ma_bound = 2.0 / (i as f64 + 1.0).sqrt();
+            bounds.push((-ma_bound, ma_bound));
+        }
     }
     
-    // Sigma bound (positive)
-    bounds.push((1e-6, 100.0));
+    // Sigma bound (positive, with reasonable range for typical data)
+    bounds.push((1e-6, 50.0));
     
     bounds
 }
 
-/// Estimate proposal scales based on parameter values
-fn estimate_proposal_scales(params: &[f64]) -> Vec<f64> {
-    params.iter().map(|&p| (p.abs() * 0.08).max(0.01)).collect() // Smaller proposal for target acceptance rate
+/// Update adaptive covariance matrix using online estimation
+fn update_adaptive_covariance(
+    samples: &[Vec<f64>],
+    proposal_cov: &mut DMatrix<f64>,
+    sample_mean: &mut DVector<f64>,
+    sample_cov: &mut DMatrix<f64>,
+) -> Result<(), CarmaError> {
+    let n_samples = samples.len();
+    let n_params = samples[0].len();
+    
+    if n_samples < 10 {
+        return Ok(()); // Need minimum samples for stable covariance
+    }
+    
+    // Compute sample mean
+    let mut new_mean = DVector::zeros(n_params);
+    for sample in samples {
+        for (i, &val) in sample.iter().enumerate() {
+            new_mean[i] += val;
+        }
+    }
+    new_mean /= n_samples as f64;
+    
+    // Compute sample covariance matrix
+    let mut new_cov = DMatrix::zeros(n_params, n_params);
+    for sample in samples {
+        let diff = DVector::from_vec(sample.clone()) - &new_mean;
+        new_cov += &diff * diff.transpose();
+    }
+    new_cov /= (n_samples - 1) as f64;
+    
+    // Apply adaptive scaling (Haario et al. 2001)
+    let s_d = 2.4_f64.powi(2) / n_params as f64; // Optimal scaling factor
+    let eps = 1e-6; // Regularization parameter
+    
+    // Update proposal covariance with regularization
+    *proposal_cov = s_d * (&new_cov + eps * DMatrix::identity(n_params, n_params));
+    
+    // Ensure positive definiteness by adding regularization if needed
+    for i in 0..n_params {
+        if proposal_cov[(i, i)] < eps {
+            proposal_cov[(i, i)] = eps;
+        }
+    }
+    
+    *sample_mean = new_mean;
+    *sample_cov = new_cov;
+    
+    Ok(())
 }
 
-/// Propose new parameters using multivariate normal random walk
-fn propose_parameters(
+/// Propose new parameters using adaptive multivariate normal distribution
+fn propose_parameters_adaptive(
     current: &[f64],
-    scales: &[f64],
+    covariance: &DMatrix<f64>,
     bounds: &[(f64, f64)],
     rng: &mut StdRng,
 ) -> Result<Vec<f64>, CarmaError> {
-    let mut proposal = Vec::with_capacity(current.len());
+    let n_params = current.len();
+    let current_vec = DVector::from_vec(current.to_vec());
     
-    for (i, (&curr_val, &scale)) in current.iter().zip(scales.iter()).enumerate() {
-        let normal = Normal::new(curr_val, scale)
-            .map_err(|e| CarmaError::InvalidParameters(format!("Invalid normal distribution: {}", e)))?;
-        
-        let mut new_val = normal.sample(rng);
-        
-        // Apply bounds
-        let (min_bound, max_bound) = bounds[i];
-        new_val = new_val.max(min_bound).min(max_bound);
-        
-        proposal.push(new_val);
+    // Use Cholesky decomposition for efficient multivariate normal sampling
+    let chol = match Cholesky::new(covariance.clone()) {
+        Some(c) => c,
+        None => {
+            // Fallback to regularized version if not positive definite
+            let regularized = covariance + 1e-6 * DMatrix::identity(n_params, n_params);
+            Cholesky::new(regularized).ok_or_else(|| {
+                CarmaError::InvalidParameters("Cannot decompose covariance matrix".to_string())
+            })?
+        }
+    };
+    
+    // Generate standard normal random vector
+    let mut z = DVector::zeros(n_params);
+    for i in 0..n_params {
+        z[i] = Normal::new(0.0, 1.0)
+            .map_err(|e| CarmaError::InvalidParameters(format!("Normal distribution error: {}", e)))?
+            .sample(rng);
+    }
+    
+    // Transform to multivariate normal: mu + L * z where L is Cholesky factor
+    let proposal_vec = &current_vec + chol.l() * z;
+    let mut proposal = proposal_vec.as_slice().to_vec();
+    
+    // Apply parameter bounds with reflection
+    for (_i, (val, &(min_bound, max_bound))) in proposal.iter_mut().zip(bounds.iter()).enumerate() {
+        if *val < min_bound {
+            *val = min_bound + (min_bound - *val).min(max_bound - min_bound);
+        } else if *val > max_bound {
+            *val = max_bound - (*val - max_bound).min(max_bound - min_bound);
+        }
     }
     
     Ok(proposal)
 }
 
-/// Adaptive proposal scaling during burn-in
-fn adaptive_proposal_scaling(scales: &mut [f64], acceptance_rate: f64) {
-    let target_rate = 0.44; // Optimal acceptance rate for random walk MH
-    let adaptation_factor = if acceptance_rate > target_rate { 
-        1.05 // Smaller adjustment to avoid overcorrection
-    } else { 
-        0.95 
-    };
+/// Simple univariate proposals for initial burn-in phase
+fn propose_parameters_simple(
+    current: &[f64],
+    bounds: &[(f64, f64)],
+    rng: &mut StdRng,
+) -> Result<Vec<f64>, CarmaError> {
+    let mut proposal = Vec::with_capacity(current.len());
     
-    for scale in scales.iter_mut() {
-        *scale *= adaptation_factor;
-        *scale = scale.max(1e-4).min(5.0); // Keep reasonable bounds
+    for (_i, (&curr_val, &(min_bound, max_bound))) in current.iter().zip(bounds.iter()).enumerate() {
+        // Adaptive scaling based on parameter magnitude and bounds
+        let range = max_bound - min_bound;
+        let scale = (curr_val.abs() * 0.05).max(range * 0.01).min(range * 0.1);
+        
+        let normal = Normal::new(curr_val, scale)
+            .map_err(|e| CarmaError::InvalidParameters(format!("Invalid normal distribution: {}", e)))?;
+        
+        let mut new_val = normal.sample(rng);
+        
+        // Apply bounds with reflection
+        if new_val < min_bound {
+            new_val = min_bound + (min_bound - new_val).min(max_bound - min_bound);
+        } else if new_val > max_bound {
+            new_val = max_bound - (new_val - max_bound).min(max_bound - min_bound);
+        }
+        
+        proposal.push(new_val);
     }
+    
+    Ok(proposal)
 }
 
 /// Compute effective sample size for each parameter
