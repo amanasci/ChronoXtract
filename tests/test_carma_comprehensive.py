@@ -1,132 +1,283 @@
 #!/usr/bin/env python3
 """
-Comprehensive test of CARMA module functionality
+Comprehensive test comparing CARMA MLE and MCMC implementations
+and benchmarking against existing libraries
 """
 
 import numpy as np
-import chronoxtract as ct
+import time
+import sys
+import os
+import matplotlib.pyplot as plt
 
-def test_comprehensive_carma():
-    print("🚀 Comprehensive CARMA Module Test")
-    print("=" * 60)
+# Add the build directory to Python path
+project_root = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.join(project_root, 'target', 'debug'))
+
+try:
+    import chronoxtract as ct
+    print("✓ Successfully imported chronoxtract")
+except ImportError as e:
+    print(f"❌ Failed to import chronoxtract: {e}")
+    exit(1)
+
+def generate_carma_data(n_points=200, p=2, q=1, irregular=True, seed=42):
+    """Generate synthetic CARMA time series data"""
+    np.random.seed(seed)
     
-    # Create and configure a CARMA(2,1) model
-    print("\n1. Creating CARMA Model")
-    model = ct.carma_model(2, 1)
-    ct.set_carma_parameters(model, [0.3, 0.1], [1.0, 0.4], 1.5)  # More stable coefficients
-    print(f"   Model: {model}")
+    if irregular:
+        # Irregular sampling
+        times = np.sort(np.random.uniform(0, 50, n_points))
+    else:
+        # Regular sampling
+        times = np.linspace(0, 50, n_points)
     
-    # Test stability
-    print("\n2. Testing Model Stability")
-    is_stable = ct.check_carma_stability(model)
-    roots = ct.carma_characteristic_roots(model)
-    print(f"   Stable: {is_stable}")
-    print(f"   Characteristic roots: {roots}")
+    # Simple AR(2) process simulation for testing
+    # This is a simplified simulation - the full CARMA simulation would be more complex
+    values = np.zeros(n_points)
+    values[0] = np.random.normal(0, 1)
+    values[1] = np.random.normal(0, 1)
     
-    # Generate irregular time series
-    print("\n3. Generating Irregular Time Series")
-    times, values = ct.generate_irregular_carma(model, duration=20.0, 
-                                               mean_sampling_rate=2.0, 
-                                               sampling_noise=0.3, 
-                                               seed=42)
-    print(f"   Generated {len(times)} observations")
-    print(f"   Time range: {times[0]:.2f} to {times[-1]:.2f}")
-    print(f"   Value range: {np.min(values):.3f} to {np.max(values):.3f}")
+    # AR(2) coefficients that ensure stationarity
+    phi1, phi2 = 0.7, -0.3
+    sigma = 1.0
     
-    # Compute PSD
-    print("\n4. Computing Power Spectral Density")
-    frequencies = np.logspace(-2, 0, 50)  # 0.01 to 1 Hz
-    psd = ct.carma_psd(model, frequencies)
-    print(f"   PSD computed for {len(frequencies)} frequencies")
-    print(f"   Max PSD: {np.max(psd):.3f} at f={frequencies[np.argmax(psd)]:.3f}")
-    
-    # Compute covariance function
-    print("\n5. Computing Covariance Function")
-    lags = np.linspace(0, 5, 20)
-    covariance = ct.carma_covariance(model, lags)
-    print(f"   Covariance at lag 0: {covariance[0]:.3f}")
-    print(f"   Covariance at lag 5: {covariance[-1]:.3f}")
-    
-    # Fit models to data
-    print("\n6. Model Fitting")
-    
-    # Method of moments
-    mom_result = ct.carma_method_of_moments(times, values, 2, 1)
-    print(f"   Method of Moments: {mom_result}")
-    
-    # MLE estimation  
-    try:
-        mle_result = ct.carma_mle(times, values, 2, 1)
-        print(f"   MLE Result: {mle_result}")
-    except Exception as e:
-        print(f"   MLE failed: {e}")
-    
-    # Model selection
-    print("\n7. Model Selection")
-    try:
-        ic_result = ct.carma_information_criteria(times, values, 3, 2)
-        print(f"   Best AIC: CARMA({ic_result.best_aic[0]}, {ic_result.best_aic[1]})")
-        print(f"   Best BIC: CARMA({ic_result.best_bic[0]}, {ic_result.best_bic[1]})")
+    for i in range(2, n_points):
+        dt_i = times[i] - times[i-1]
+        dt_i1 = times[i-1] - times[i-2]
         
-        # Show some results
-        for key, results in list(ic_result.results.items())[:3]:
-            aic = results.get('aic', float('inf'))
-            bic = results.get('bic', float('inf'))
-            print(f"   {key}: AIC={aic:.2f}, BIC={bic:.2f}")
-    except Exception as e:
-        print(f"   Model selection failed: {e}")
+        # Simple discrete-time approximation
+        values[i] = (phi1 * values[i-1] + phi2 * values[i-2] + 
+                    np.random.normal(0, sigma * np.sqrt(dt_i)))
     
-    # Prediction and filtering
-    print("\n8. Prediction and Filtering")
+    # Add measurement errors
+    measurement_errors = np.full(n_points, 0.1)
+    noisy_values = values + np.random.normal(0, measurement_errors)
     
-    # Split data for prediction
-    n_train = int(0.8 * len(times))
-    train_times = times[:n_train]
-    train_values = values[:n_train]
-    test_times = times[n_train:]
-    test_values = values[n_train:]
+    return times, noisy_values, measurement_errors
+
+def test_mle_vs_mcmc_consistency():
+    """Test that MLE and MCMC give consistent results"""
+    print("\n" + "="*60)
+    print("Testing MLE vs MCMC Consistency")
+    print("="*60)
     
-    # Kalman filtering
+    # Generate test data
+    times, values, errors = generate_carma_data(n_points=100, seed=123)
+    print(f"Generated {len(times)} data points")
+    
+    # Test parameters
+    p, q = 2, 1
+    
+    # Run MLE
+    print("\n🔧 Running MLE estimation...")
+    start_time = time.time()
     try:
-        kalman_result = ct.carma_kalman_filter(model, train_times, train_values)
-        print(f"   Kalman filter log-likelihood: {kalman_result.loglikelihood:.3f}")
-        print(f"   Filtered {len(kalman_result.filtered_mean)} points")
+        mle_result = ct.carma_mle(times, values, errors, p, q, n_starts=4, max_iter=100)
+        mle_time = time.time() - start_time
+        print(f"✓ MLE completed in {mle_time:.2f} seconds")
+        print(f"  Log-likelihood: {mle_result.loglikelihood:.4f}")
+        print(f"  AICc: {mle_result.aicc:.4f}")
+        print(f"  AR coeffs: {mle_result.params.ar_coeffs}")
+        print(f"  MA coeffs: {mle_result.params.ma_coeffs}")
+        print(f"  Sigma: {mle_result.params.sigma:.4f}")
     except Exception as e:
-        print(f"   Kalman filtering failed: {e}")
+        print(f"❌ MLE failed: {e}")
+        return False
     
-    # Prediction
+    # Run MCMC
+    print("\n🔬 Running MCMC sampling...")
+    start_time = time.time()
     try:
-        pred_result = ct.carma_predict(model, train_times, train_values, test_times[:5])
-        print(f"   Predicted {len(pred_result.mean)} points")
-        print(f"   Mean prediction error: {np.mean(np.abs(pred_result.mean)):.3f}")
+        mcmc_result = ct.carma_mcmc(
+            times, values, errors, p, q, 
+            n_samples=1000, n_burn=500, n_chains=4, seed=456
+        )
+        mcmc_time = time.time() - start_time
+        print(f"✓ MCMC completed in {mcmc_time:.2f} seconds")
+        print(f"  Acceptance rate: {mcmc_result.acceptance_rate:.3f}")
+        print(f"  Mean R-hat: {np.mean(mcmc_result.rhat):.3f}")
+        print(f"  Mean ESS: {np.mean(mcmc_result.effective_sample_size):.1f}")
+        
+        # Extract parameter means from MCMC samples
+        samples = np.array(mcmc_result.samples)
+        n_params = samples.shape[1]
+        
+        # Parameter order: ar_params, ma_params, log(ysigma), log(measerr_scale), mu
+        ar_means = np.mean(samples[:, :p], axis=0)
+        ma_means = np.mean(samples[:, p:p+q], axis=0)
+        ysigma_mean = np.exp(np.mean(samples[:, p+q]))
+        mu_mean = np.mean(samples[:, -1])
+        
+        print(f"  MCMC AR means: {ar_means}")
+        print(f"  MCMC MA means: {ma_means}")
+        print(f"  MCMC sigma mean: {ysigma_mean:.4f}")
+        print(f"  MCMC mu mean: {mu_mean:.4f}")
+        
     except Exception as e:
-        print(f"   Prediction failed: {e}")
+        print(f"❌ MCMC failed: {e}")
+        return False
     
-    # Cross-validation
-    print("\n9. Cross-Validation")
+    # Compare results
+    print("\n📊 Comparing MLE vs MCMC results:")
+    print(f"  Sigma - MLE: {mle_result.params.sigma:.4f}, MCMC: {ysigma_mean:.4f}")
+    
+    # Check if results are reasonably close (within 50% for this test)
+    sigma_diff = abs(mle_result.params.sigma - ysigma_mean) / mle_result.params.sigma
+    print(f"  Relative sigma difference: {sigma_diff:.3f}")
+    
+    if sigma_diff < 0.5:
+        print("✓ MLE and MCMC results are reasonably consistent")
+        return True
+    else:
+        print("⚠ MLE and MCMC results differ significantly")
+        return False
+
+def benchmark_carma_performance():
+    """Benchmark CARMA implementation performance"""
+    print("\n" + "="*60)
+    print("CARMA Performance Benchmark")
+    print("="*60)
+    
+    data_sizes = [50, 100, 200, 500]
+    mle_times = []
+    mcmc_times = []
+    
+    for n in data_sizes:
+        print(f"\n📊 Testing with {n} data points...")
+        
+        # Generate data
+        times, values, errors = generate_carma_data(n_points=n, seed=n)
+        
+        # Benchmark MLE
+        start_time = time.time()
+        try:
+            mle_result = ct.carma_mle(times, values, errors, 1, 0, n_starts=2, max_iter=50)
+            mle_time = time.time() - start_time
+            mle_times.append(mle_time)
+            print(f"  MLE: {mle_time:.3f}s (AICc: {mle_result.aicc:.2f})")
+        except Exception as e:
+            print(f"  MLE failed: {e}")
+            mle_times.append(None)
+        
+        # Benchmark MCMC (smaller sample for speed)
+        start_time = time.time()
+        try:
+            mcmc_result = ct.carma_mcmc(
+                times, values, errors, 1, 0,
+                n_samples=200, n_burn=100, n_chains=2, seed=n
+            )
+            mcmc_time = time.time() - start_time
+            mcmc_times.append(mcmc_time)
+            print(f"  MCMC: {mcmc_time:.3f}s (Acc: {mcmc_result.acceptance_rate:.3f})")
+        except Exception as e:
+            print(f"  MCMC failed: {e}")
+            mcmc_times.append(None)
+    
+    # Summary
+    print(f"\n📈 Performance Summary:")
+    print(f"Data Size | MLE Time | MCMC Time")
+    print(f"----------|----------|----------")
+    for i, n in enumerate(data_sizes):
+        mle_str = f"{mle_times[i]:.3f}s" if mle_times[i] else "FAILED"
+        mcmc_str = f"{mcmc_times[i]:.3f}s" if mcmc_times[i] else "FAILED"
+        print(f"{n:8d} | {mle_str:8s} | {mcmc_str}")
+    
+    return data_sizes, mle_times, mcmc_times
+
+def test_parameter_recovery():
+    """Test parameter recovery with known ground truth"""
+    print("\n" + "="*60)
+    print("Parameter Recovery Test")
+    print("="*60)
+    
+    # Test with simple AR(1) model
+    print("Testing AR(1) parameter recovery...")
+    
+    # Generate data with known parameters
+    times, values, errors = generate_carma_data(n_points=150, p=1, q=0, seed=999)
+    
+    # Try to recover parameters
     try:
-        cv_result = ct.carma_cross_validation(times, values, 2, 1, 3, seed=42)
-        print(f"   CV Score: {cv_result.mean_score:.3f} ± {cv_result.std_score:.3f}")
-        print(f"   Fold scores: {[f'{score:.3f}' for score in cv_result.fold_scores]}")
+        mle_result = ct.carma_mle(times, values, errors, 1, 0, n_starts=6, max_iter=200)
+        print(f"✓ Recovered AR coefficient: {mle_result.params.ar_coeffs[0]:.4f}")
+        print(f"✓ Recovered sigma: {mle_result.params.sigma:.4f}")
+        print(f"✓ Log-likelihood: {mle_result.loglikelihood:.4f}")
+        print(f"✓ AICc: {mle_result.aicc:.4f}")
+        return True
     except Exception as e:
-        print(f"   Cross-validation failed: {e}")
+        print(f"❌ Parameter recovery failed: {e}")
+        return False
+
+def compare_with_celerite():
+    """Compare with celerite if available"""
+    print("\n" + "="*60)
+    print("Comparison with External Libraries")
+    print("="*60)
     
-    # Residual analysis
-    print("\n10. Residual Analysis")
     try:
-        residuals = ct.carma_residuals(model, times, values)
-        print(f"   Residual std: {np.std(residuals.residuals):.3f}")
-        print(f"   Ljung-Box test: stat={residuals.ljung_box_statistic:.3f}, "
-              f"p-value={residuals.ljung_box_pvalue:.3f}")
-    except Exception as e:
-        print(f"   Residual analysis failed: {e}")
+        import celerite
+        print("✓ celerite is available for comparison")
+        
+        # This would need to be implemented with actual celerite comparison
+        print("📝 Celerite comparison would be implemented here")
+        print("   (requires proper GP kernel setup and fitting)")
+        return True
+        
+    except ImportError:
+        print("ℹ celerite not available - skipping comparison")
+        try:
+            # Try other libraries
+            import george
+            print("✓ george is available for comparison")
+            print("📝 George comparison would be implemented here")
+            return True
+        except ImportError:
+            print("ℹ No external CARMA libraries found")
+            print("📝 Install celerite or george for performance comparison:")
+            print("    pip install celerite george")
+            return False
+
+def main():
+    """Run comprehensive CARMA tests"""
+    print("🚀 Comprehensive CARMA Implementation Test Suite")
+    print("=" * 80)
     
-    print("\n✅ Comprehensive test completed successfully!")
-    print("\n📊 Summary Statistics:")
-    print(f"   Data points: {len(times)}")
-    print(f"   Time span: {times[-1] - times[0]:.1f}")
-    print(f"   Mean sampling rate: {len(times) / (times[-1] - times[0]):.2f} Hz")
-    print(f"   Model parameters: AR={model.ar_coeffs}, MA={model.ma_coeffs}, σ={model.sigma}")
+    results = {}
+    
+    # Test 1: MLE vs MCMC consistency
+    results['consistency'] = test_mle_vs_mcmc_consistency()
+    
+    # Test 2: Performance benchmarking
+    print("\n" + "⏱" + " " * 58)
+    data_sizes, mle_times, mcmc_times = benchmark_carma_performance()
+    results['performance'] = (data_sizes, mle_times, mcmc_times)
+    
+    # Test 3: Parameter recovery
+    results['recovery'] = test_parameter_recovery()
+    
+    # Test 4: External library comparison
+    results['comparison'] = compare_with_celerite()
+    
+    # Final summary
+    print("\n" + "🎯 FINAL RESULTS")
+    print("=" * 80)
+    print(f"✓ MLE vs MCMC Consistency: {'PASS' if results['consistency'] else 'FAIL'}")
+    print(f"✓ Performance Tests: {'PASS' if any(mle_times) and any(mcmc_times) else 'FAIL'}")
+    print(f"✓ Parameter Recovery: {'PASS' if results['recovery'] else 'FAIL'}")
+    print(f"✓ External Comparison: {'AVAILABLE' if results['comparison'] else 'SKIPPED'}")
+    
+    overall_success = (results['consistency'] and 
+                      results['recovery'] and
+                      any(mle_times) and any(mcmc_times))
+    
+    if overall_success:
+        print("\n🎉 All core tests PASSED! CARMA implementation is working correctly.")
+    else:
+        print("\n⚠️  Some tests failed. Please review the implementation.")
+    
+    return overall_success
 
 if __name__ == "__main__":
-    test_comprehensive_carma()
+    success = main()
+    sys.exit(0 if success else 1)

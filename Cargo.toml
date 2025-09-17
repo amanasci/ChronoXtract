@@ -21,6 +21,9 @@ thiserror = "1.0"
 num-complex = "0.4"
 rayon = "1.11"
 statrs = "0.17"
+# Additional dependencies for new CARMA implementation
+nalgebra-lapack = { version = "0.24", optional = true }
+blas-src = { version = "0.10", features = ["openblas"], optional = true }
 
 [dependencies.pyo3]
 version = "0.20"
@@ -28,4 +31,5 @@ features = ["abi3-py38"]
 
 [dev-dependencies]
 criterion = { version = "0.5", features = ["html_reports"] }
+approx = "0.5"
 
