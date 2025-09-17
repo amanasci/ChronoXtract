@@ -1,324 +1,386 @@
+use crate::carma::model::{CarmaModel, CarmaError};
+use crate::carma::likelihood::StateSpaceModel;
 use pyo3::prelude::*;
-use numpy::{PyReadonlyArray1, PyArray1};
+use numpy::{PyArray1, PyReadonlyArray1};
 use nalgebra::{DMatrix, DVector};
 use rand::prelude::*;
 use rand_distr::{Normal, Uniform};
-use crate::carma::carma_model::{CarmaModel, CarmaError};
-use crate::carma::utils::{matrix_exponential, carma_to_state_space, solve_lyapunov};
+use rand_xoshiro::Xoshiro256PlusPlus;
 
-/// Simulate CARMA process at given times
+/// Simulate a CARMA process at given times
 #[pyfunction]
 pub fn simulate_carma(
     py: Python,
     model: &CarmaModel,
     times: PyReadonlyArray1<f64>,
-    initial_state: Option<PyReadonlyArray1<f64>>,
-    seed: Option<u64>
+    seed: Option<u64>,
 ) -> PyResult<Py<PyArray1<f64>>> {
     let times_slice = times.as_slice()?;
     
-    if !model.is_valid() {
-        return Err(pyo3::exceptions::PyValueError::new_err("Invalid model"));
-    }
-    
     if times_slice.is_empty() {
-        return Err(pyo3::exceptions::PyValueError::new_err("Times cannot be empty"));
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "Times array cannot be empty"
+        ));
     }
     
-    // Check times are sorted
-    for i in 1..times_slice.len() {
-        if times_slice[i] <= times_slice[i-1] {
-            return Err(pyo3::exceptions::PyValueError::new_err("Times must be strictly increasing"));
-        }
-    }
-    
-    // Set up random number generator
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
+    // Initialize random number generator
+    let mut rng = if let Some(seed_val) = seed {
+        Xoshiro256PlusPlus::seed_from_u64(seed_val)
     } else {
-        StdRng::from_entropy()
+        Xoshiro256PlusPlus::from_entropy()
     };
     
-    // Convert to state space
-    let ss = carma_to_state_space(model)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    // Generate simulated values
+    let values = simulate_carma_process(model, times_slice, &mut rng)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
     
-    let p = model.p;
-    let transition = DMatrix::from_vec(p, p, ss.transition_matrix.into_iter().flatten().collect());
-    let observation = DVector::from_vec(ss.observation_vector);
-    let process_noise = DMatrix::from_vec(p, p, ss.process_noise_matrix.into_iter().flatten().collect());
-    
-    // Initialize state
-    let mut state = if let Some(init_state) = initial_state {
-        let init_slice = init_state.as_slice()?;
-        if init_slice.len() != p {
-            return Err(pyo3::exceptions::PyValueError::new_err(
-                format!("Initial state must have length {}", p)
-            ));
-        }
-        DVector::from_vec(init_slice.to_vec())
-    } else {
-        DVector::zeros(p)
-    };
-    
-    // Simulate
-    let values = simulate_carma_process(&transition, &observation, &process_noise, 
-                                       &mut state, times_slice, &mut rng)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-    
-    Ok(PyArray1::from_vec(py, values).into())
+    // Convert to numpy array
+    let py_array = PyArray1::from_vec(py, values);
+    Ok(py_array.into())
 }
 
-/// Generate irregular sampling times and simulate CARMA process
+/// Generate synthetic CARMA data with irregular sampling
 #[pyfunction]
-pub fn generate_irregular_carma(
+pub fn generate_carma_data(
     py: Python,
     model: &CarmaModel,
     duration: f64,
     mean_sampling_rate: f64,
-    sampling_noise: f64,
-    seed: Option<u64>
-) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>)> {
-    if !model.is_valid() {
-        return Err(pyo3::exceptions::PyValueError::new_err("Invalid model"));
-    }
-    
+    sampling_irregularity: Option<f64>,
+    measurement_noise: Option<f64>,
+    seed: Option<u64>,
+) -> PyResult<(Py<PyArray1<f64>>, Py<PyArray1<f64>>, Option<Py<PyArray1<f64>>>)> {
     if duration <= 0.0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("Duration must be positive"));
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "Duration must be positive"
+        ));
     }
     
     if mean_sampling_rate <= 0.0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("Mean sampling rate must be positive"));
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "Mean sampling rate must be positive"
+        ));
     }
     
-    if sampling_noise < 0.0 || sampling_noise >= 1.0 {
-        return Err(pyo3::exceptions::PyValueError::new_err("Sampling noise must be in [0, 1)"));
-    }
-    
-    // Set up random number generator
-    let mut rng = if let Some(s) = seed {
-        StdRng::seed_from_u64(s)
+    // Initialize random number generator
+    let mut rng = if let Some(seed_val) = seed {
+        Xoshiro256PlusPlus::seed_from_u64(seed_val)
     } else {
-        StdRng::from_entropy()
+        Xoshiro256PlusPlus::from_entropy()
     };
     
     // Generate irregular sampling times
-    let times = generate_irregular_times(duration, mean_sampling_rate, sampling_noise, &mut rng)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    let irregularity = sampling_irregularity.unwrap_or(0.3);
+    let times = generate_irregular_times(duration, mean_sampling_rate, irregularity, &mut rng);
     
-    // Convert to state space
-    let ss = carma_to_state_space(model)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
+    // Simulate CARMA process
+    let values = simulate_carma_process(model, &times, &mut rng)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
     
-    let p = model.p;
-    let transition = DMatrix::from_vec(p, p, ss.transition_matrix.into_iter().flatten().collect());
-    let observation = DVector::from_vec(ss.observation_vector);
-    let process_noise = DMatrix::from_vec(p, p, ss.process_noise_matrix.into_iter().flatten().collect());
+    // Add measurement noise if specified
+    let (final_values, errors) = if let Some(noise_std) = measurement_noise {
+        let mut noisy_values = values.clone();
+        let mut error_values = vec![noise_std; values.len()];
+        
+        let noise_dist = Normal::new(0.0, noise_std).unwrap();
+        for value in &mut noisy_values {
+            *value += noise_dist.sample(&mut rng);
+        }
+        
+        (noisy_values, Some(error_values))
+    } else {
+        (values, None)
+    };
     
-    // Initialize state from stationary distribution
-    let mut state = DVector::zeros(p);
+    // Convert to numpy arrays
+    let times_array = PyArray1::from_vec(py, times);
+    let values_array = PyArray1::from_vec(py, final_values);
+    let errors_array = errors.map(|e| PyArray1::from_vec(py, e).into());
     
-    // Sample initial state from stationary distribution
-    let steady_state_cov = solve_lyapunov(&(-&transition), &process_noise)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-    
-    let normal = Normal::new(0.0, 1.0)
-        .map_err(|_| pyo3::exceptions::PyValueError::new_err("Failed to create normal distribution"))?;
-    
-    let initial_noise = generate_multivariate_normal(&steady_state_cov, &mut rng, &normal)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-    
-    state = initial_noise;
-    
-    // Simulate
-    let values = simulate_carma_process(&transition, &observation, &process_noise, 
-                                       &mut state, &times, &mut rng)
-        .map_err(|e| pyo3::exceptions::PyValueError::new_err(e.to_string()))?;
-    
-    Ok((
-        PyArray1::from_vec(py, times).into(),
-        PyArray1::from_vec(py, values).into()
-    ))
+    Ok((times_array.into(), values_array.into(), errors_array))
 }
 
-/// Internal CARMA simulation implementation
+/// Internal function to simulate CARMA process
 fn simulate_carma_process(
-    transition: &DMatrix<f64>,
-    observation: &DVector<f64>,
-    process_noise: &DMatrix<f64>,
-    initial_state: &mut DVector<f64>,
+    model: &CarmaModel,
     times: &[f64],
-    rng: &mut StdRng,
+    rng: &mut Xoshiro256PlusPlus,
 ) -> Result<Vec<f64>, CarmaError> {
-    let n = times.len();
-    let _p = transition.nrows();
-    let mut values = Vec::with_capacity(n);
-    let mut state = initial_state.clone();
+    if times.is_empty() {
+        return Ok(Vec::new());
+    }
     
-    // Precompute steady-state covariance for process noise
-    let steady_state_cov = solve_lyapunov(&(-transition), process_noise)?;
+    // Create state-space representation
+    let state_space = StateSpaceModel::from_carma_model(model)?;
+    let p = model.p;
     
-    // Normal distribution for noise generation
-    let normal = Normal::new(0.0, 1.0).map_err(|_| CarmaError::NumericalError("Failed to create normal distribution".to_string()))?;
+    // Initialize state at steady-state distribution
+    let mut state = sample_steady_state(&state_space, model.mu, rng)?;
+    let mut values = Vec::with_capacity(times.len());
     
-    for i in 0..n {
-        // Time step
-        let dt = if i == 0 { 0.0 } else { times[i] - times[i-1] };
+    // Simulate first observation
+    let first_obs = state_space.observation_matrix.dot(&state) + model.mu;
+    values.push(first_obs);
+    
+    // Simulate subsequent observations
+    for i in 1..times.len() {
+        let dt = times[i] - times[i-1];
+        
+        if dt < 0.0 {
+            return Err(CarmaError::DataValidationError {
+                message: "Times must be in ascending order".to_string()
+            });
+        }
         
         if dt > 0.0 {
-            // Propagate state
-            let transition_matrix = matrix_exponential(transition, dt)?;
-            state = &transition_matrix * &state;
-            
-            // Add process noise
-            let process_cov = compute_process_noise_cov(&transition_matrix, &steady_state_cov, dt)?;
-            let noise = generate_multivariate_normal(&process_cov, rng, &normal)?;
-            state += noise;
+            // Propagate state forward in time
+            state = propagate_state_stochastic(&state_space, &state, dt, rng)?;
         }
         
         // Generate observation
-        let obs_mean = observation.dot(&state);
-        let obs_value = obs_mean; // For now, no observation noise in simulation
-        
-        values.push(obs_value);
+        let obs = state_space.observation_matrix.dot(&state) + model.mu;
+        values.push(obs);
     }
     
     Ok(values)
+}
+
+/// Sample from steady-state distribution
+fn sample_steady_state(
+    state_space: &StateSpaceModel,
+    mu: f64,
+    rng: &mut Xoshiro256PlusPlus,
+) -> Result<DVector<f64>, CarmaError> {
+    let p = state_space.steady_state_cov.nrows();
+    
+    // Cholesky decomposition of steady-state covariance
+    let cov_chol = cholesky_decomposition_matrix(&state_space.steady_state_cov)?;
+    
+    // Generate standard normal random vector
+    let mut z = DVector::zeros(p);
+    let normal_dist = Normal::new(0.0, 1.0).unwrap();
+    for i in 0..p {
+        z[i] = normal_dist.sample(rng);
+    }
+    
+    // Transform to correlated random vector
+    let mut state = &cov_chol * &z;
+    
+    // Add mean to first component
+    state[0] += mu;
+    
+    Ok(state)
+}
+
+/// Propagate state stochastically forward in time
+fn propagate_state_stochastic(
+    state_space: &StateSpaceModel,
+    current_state: &DVector<f64>,
+    dt: f64,
+    rng: &mut Xoshiro256PlusPlus,
+) -> Result<DVector<f64>, CarmaError> {
+    let p = current_state.len();
+    
+    // Deterministic propagation
+    let phi = state_space.propagate_state(dt);
+    let mut new_state = &phi * current_state;
+    
+    // Add process noise
+    let q_dt = state_space.process_noise_over_interval(dt);
+    
+    // Cholesky decomposition of process noise covariance
+    let q_chol = cholesky_decomposition_matrix(&q_dt)?;
+    
+    // Generate noise
+    let mut noise = DVector::zeros(p);
+    let normal_dist = Normal::new(0.0, 1.0).unwrap();
+    for i in 0..p {
+        noise[i] = normal_dist.sample(rng);
+    }
+    
+    // Add correlated noise
+    let correlated_noise = &q_chol * &noise;
+    new_state += &correlated_noise;
+    
+    Ok(new_state)
 }
 
 /// Generate irregular sampling times
 fn generate_irregular_times(
     duration: f64,
     mean_rate: f64,
-    noise_level: f64,
-    rng: &mut StdRng,
-) -> Result<Vec<f64>, CarmaError> {
-    let expected_count = (duration * mean_rate) as usize;
-    let mut times = Vec::with_capacity(expected_count + 10);
-    
-    let mean_interval = 1.0 / mean_rate;
-    let uniform = Uniform::new(0.0, 1.0);
+    irregularity: f64,
+    rng: &mut Xoshiro256PlusPlus,
+) -> Vec<f64> {
+    let expected_n_points = (duration * mean_rate) as usize;
+    let mut times = Vec::with_capacity(expected_n_points + 10);
     
     let mut current_time = 0.0;
+    times.push(current_time);
+    
+    let mean_interval = 1.0 / mean_rate;
     
     while current_time < duration {
-        times.push(current_time);
-        
-        // Generate next interval with noise
+        // Generate next interval with irregularity
         let base_interval = mean_interval;
-        let noise_factor = 1.0 + noise_level * (2.0 * rng.sample(uniform) - 1.0);
-        let interval = base_interval * noise_factor.max(0.1); // Ensure positive interval
-        
-        current_time += interval;
-    }
-    
-    // Remove any times beyond duration
-    times.retain(|&t| t <= duration);
-    
-    if times.is_empty() {
-        times.push(0.0);
-    }
-    
-    Ok(times)
-}
-
-/// Compute process noise covariance for simulation
-fn compute_process_noise_cov(
-    transition_matrix: &DMatrix<f64>,
-    steady_state_cov: &DMatrix<f64>,
-    dt: f64,
-) -> Result<DMatrix<f64>, CarmaError> {
-    let p = transition_matrix.nrows();
-    
-    if dt <= 0.0 {
-        return Ok(DMatrix::zeros(p, p));
-    }
-    
-    // Simplified computation: use the fact that for small dt,
-    // the process noise covariance is approximately steady_state_cov * dt
-    if dt < 0.1 {
-        Ok(steady_state_cov * dt)
-    } else {
-        // For larger dt, use more sophisticated computation
-        // This is a simplified version - a full implementation would solve the integral
-        let identity = DMatrix::identity(p, p);
-        let cov_factor = &identity - transition_matrix * transition_matrix.transpose();
-        
-        if let Some(inverse) = cov_factor.try_inverse() {
-            Ok(&inverse * steady_state_cov * dt)
+        let noise_factor = if irregularity > 0.0 {
+            let uniform_dist = Uniform::new(-irregularity, irregularity);
+            1.0 + uniform_dist.sample(rng)
         } else {
-            // Fallback to simple scaling
-            Ok(steady_state_cov * dt)
+            1.0
+        };
+        
+        let interval = base_interval * noise_factor.max(0.1);
+        current_time += interval;
+        
+        if current_time <= duration {
+            times.push(current_time);
         }
     }
+    
+    times
 }
 
-/// Generate multivariate normal random vector
-fn generate_multivariate_normal(
-    covariance: &DMatrix<f64>,
-    rng: &mut StdRng,
-    normal: &Normal<f64>,
-) -> Result<DVector<f64>, CarmaError> {
-    let p = covariance.nrows();
+/// Cholesky decomposition for DMatrix
+fn cholesky_decomposition_matrix(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, CarmaError> {
+    let n = matrix.nrows();
+    let mut l = DMatrix::zeros(n, n);
     
-    // Cholesky decomposition for multivariate normal generation
-    let chol = covariance.clone().cholesky();
-    let l_matrix = if let Some(chol_decomp) = chol {
-        chol_decomp.l()
-    } else {
-        // Fallback: use diagonal if Cholesky fails
-        let mut diag = DMatrix::zeros(p, p);
-        for i in 0..p {
-            diag[(i, i)] = covariance[(i, i)].max(0.0).sqrt();
+    for i in 0..n {
+        for j in 0..=i {
+            if i == j {
+                // Diagonal elements
+                let mut sum = 0.0;
+                for k in 0..j {
+                    sum += l[(j, k)] * l[(j, k)];
+                }
+                let val = matrix[(j, j)] - sum;
+                if val <= 0.0 {
+                    return Err(CarmaError::NumericalError {
+                        message: format!("Matrix is not positive definite at element ({}, {}): {}", j, j, val)
+                    });
+                }
+                l[(j, j)] = val.sqrt();
+            } else {
+                // Off-diagonal elements
+                let mut sum = 0.0;
+                for k in 0..j {
+                    sum += l[(i, k)] * l[(j, k)];
+                }
+                if l[(j, j)].abs() < 1e-14 {
+                    return Err(CarmaError::NumericalError {
+                        message: "Near-singular matrix in Cholesky decomposition".to_string()
+                    });
+                }
+                l[(i, j)] = (matrix[(i, j)] - sum) / l[(j, j)];
+            }
         }
-        diag
+    }
+    
+    Ok(l)
+}
+
+/// Generate stable CARMA parameters for testing
+#[pyfunction]
+pub fn generate_stable_carma_parameters(
+    p: usize,
+    q: usize,
+    seed: Option<u64>,
+) -> PyResult<(Vec<f64>, Vec<f64>, f64)> {
+    if p == 0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "Order p must be greater than 0"
+        ));
+    }
+    
+    if q >= p {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            format!("Order q ({}) must be less than p ({})", q, p)
+        ));
+    }
+    
+    let mut rng = if let Some(seed_val) = seed {
+        Xoshiro256PlusPlus::seed_from_u64(seed_val)
+    } else {
+        Xoshiro256PlusPlus::from_entropy()
     };
     
-    // Generate standard normal vector
-    let mut z = DVector::zeros(p);
-    for i in 0..p {
-        z[i] = rng.sample(normal);
-    }
+    let (ar_coeffs, ma_coeffs, sigma) = generate_stable_parameters(p, q, &mut rng);
     
-    // Transform to multivariate normal
-    Ok(&l_matrix * z)
+    Ok((ar_coeffs, ma_coeffs, sigma))
 }
 
-/// Validate simulation parameters
+/// Internal function to generate stable parameters
+fn generate_stable_parameters(p: usize, q: usize, rng: &mut Xoshiro256PlusPlus) -> (Vec<f64>, Vec<f64>, f64) {
+    // Generate stable AR coefficients
+    let ar_coeffs = match p {
+        1 => {
+            // CAR(1): coefficient must be positive
+            let coeff = rng.gen_range(0.1..2.0);
+            vec![coeff]
+        }
+        2 => {
+            // CARMA(2,q): coefficients must satisfy stability conditions
+            let a1 = rng.gen_range(0.1..3.0);
+            let a0 = rng.gen_range(0.1..a1 * 0.8);
+            vec![a0, a1]
+        }
+        _ => {
+            // Higher-order: use a more conservative approach
+            let mut coeffs = Vec::with_capacity(p);
+            for i in 0..p {
+                let coeff = rng.gen_range(0.1..1.0) / (i + 1) as f64;
+                coeffs.push(coeff);
+            }
+            coeffs
+        }
+    };
+    
+    // Generate MA coefficients
+    let mut ma_coeffs = vec![1.0]; // β_0 = 1 by convention
+    for _ in 0..q {
+        let coeff = rng.gen_range(-1.0..1.0);
+        ma_coeffs.push(coeff);
+    }
+    
+    // Generate reasonable sigma
+    let sigma = rng.gen_range(0.5..2.0);
+    
+    (ar_coeffs, ma_coeffs, sigma)
+}
+
+/// Validate CARMA simulation parameters
 pub fn validate_simulation_params(
     model: &CarmaModel,
     times: &[f64],
-    initial_state: Option<&[f64]>,
 ) -> Result<(), CarmaError> {
-    if !model.is_valid() {
-        return Err(CarmaError::InvalidParameters("Invalid model".to_string()));
-    }
-    
     if times.is_empty() {
-        return Err(CarmaError::InvalidData("Times cannot be empty".to_string()));
+        return Err(CarmaError::DataValidationError {
+            message: "Times array cannot be empty".to_string()
+        });
     }
     
-    if times.iter().any(|&t| !t.is_finite()) {
-        return Err(CarmaError::InvalidData("Times must be finite".to_string()));
-    }
-    
-    // Check times are sorted
+    // Check that times are sorted
     for i in 1..times.len() {
         if times[i] <= times[i-1] {
-            return Err(CarmaError::InvalidData("Times must be strictly increasing".to_string()));
+            return Err(CarmaError::DataValidationError {
+                message: "Times must be strictly increasing".to_string()
+            });
         }
     }
     
-    if let Some(init_state) = initial_state {
-        if init_state.len() != model.p {
-            return Err(CarmaError::InvalidParameters(
-                format!("Initial state must have length {}", model.p)
-            ));
-        }
-        
-        if init_state.iter().any(|&x| !x.is_finite()) {
-            return Err(CarmaError::InvalidData("Initial state must be finite".to_string()));
-        }
+    // Check model stability
+    if !model.is_stable() {
+        return Err(CarmaError::InvalidParameter {
+            message: "Model is not stable".to_string()
+        });
+    }
+    
+    // Check parameter validity
+    if model.sigma <= 0.0 {
+        return Err(CarmaError::InvalidParameter {
+            message: "Sigma must be positive".to_string()
+        });
     }
     
     Ok(())
@@ -327,18 +389,15 @@ pub fn validate_simulation_params(
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::carma::carma_model::CarmaModel;
-    use numpy::PyArray1;
-    use pyo3::Python;
     
     #[test]
-    fn test_irregular_time_generation() {
-        let mut rng = StdRng::seed_from_u64(42);
-        let times = generate_irregular_times(10.0, 1.0, 0.2, &mut rng).unwrap();
+    fn test_generate_irregular_times() {
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
+        let times = generate_irregular_times(10.0, 1.0, 0.3, &mut rng);
         
-        assert!(!times.is_empty());
-        assert!(times[0] >= 0.0);
-        assert!(times.last().unwrap() <= &10.0);
+        assert!(times.len() > 5);
+        assert!(times[0] == 0.0);
+        assert!(times[times.len() - 1] <= 10.0);
         
         // Check times are sorted
         for i in 1..times.len() {
@@ -347,74 +406,39 @@ mod tests {
     }
     
     #[test]
-    fn test_multivariate_normal() {
-        let mut rng = StdRng::seed_from_u64(42);
-        let normal = Normal::new(0.0, 1.0).unwrap();
-        let cov = DMatrix::identity(3, 3) * 2.0;
+    fn test_stable_parameter_generation() {
+        let (ar_coeffs, ma_coeffs, sigma) = generate_stable_parameters(2, 1, &mut Xoshiro256PlusPlus::seed_from_u64(42));
         
-        let sample = generate_multivariate_normal(&cov, &mut rng, &normal).unwrap();
-        assert_eq!(sample.len(), 3);
-        assert!(sample.iter().all(|&x| x.is_finite()));
+        assert_eq!(ar_coeffs.len(), 2);
+        assert_eq!(ma_coeffs.len(), 2);
+        assert!(sigma > 0.0);
+        assert_eq!(ma_coeffs[0], 1.0);
+        
+        // Check basic stability for CARMA(2,1)
+        assert!(ar_coeffs[0] > 0.0);
+        assert!(ar_coeffs[1] > 0.0);
     }
     
     #[test]
-    fn test_simulation_validation() {
-        let model = CarmaModel::new(2, 1).unwrap();
-        let times = vec![0.0, 1.0, 2.0];
-        let init_state = vec![0.0, 0.0];
+    fn test_carma_simulation_basic() {
+        let mut model = CarmaModel::new(2, 1).unwrap();
+        model.ar_coeffs = vec![0.5, 1.0];
+        model.ma_coeffs = vec![1.0, 0.3];
+        model.sigma = 1.0;
+        model.mu = 0.0;
         
-        assert!(validate_simulation_params(&model, &times, Some(&init_state)).is_ok());
+        let times = vec![0.0, 1.0, 2.0, 3.0, 4.0];
+        let mut rng = Xoshiro256PlusPlus::seed_from_u64(42);
         
-        // Test various error conditions
-        let empty_times = vec![];
-        assert!(validate_simulation_params(&model, &empty_times, None).is_err());
+        let result = simulate_carma_process(&model, &times, &mut rng);
+        assert!(result.is_ok());
         
-        let unsorted_times = vec![1.0, 0.0, 2.0];
-        assert!(validate_simulation_params(&model, &unsorted_times, None).is_err());
+        let values = result.unwrap();
+        assert_eq!(values.len(), times.len());
         
-        let wrong_init_state = vec![0.0];
-        assert!(validate_simulation_params(&model, &times, Some(&wrong_init_state)).is_err());
-    }
-    
-    #[test]
-    fn test_simulate_carma_setup() {
-        Python::with_gil(|py| {
-            let mut model = CarmaModel::new(2, 1).unwrap();
-            model.ar_coeffs = vec![1.5, -0.5];
-            model.ma_coeffs = vec![1.0, 0.3];
-            model.sigma = 1.0;
-            
-            let times = PyArray1::from_vec(py, vec![0.0, 1.0, 2.0, 3.0]);
-            let result = simulate_carma(py, &model, times.readonly(), None, Some(42));
-            
-            assert!(result.is_ok());
-            let values = result.unwrap();
-            let values_vec: Vec<f64> = values.as_ref(py).to_vec().unwrap();
-            assert_eq!(values_vec.len(), 4);
-            assert!(values_vec.iter().all(|&x| x.is_finite()));
-        });
-    }
-    
-    #[test]
-    fn test_generate_irregular_carma_setup() {
-        Python::with_gil(|py| {
-            let mut model = CarmaModel::new(2, 1).unwrap();
-            model.ar_coeffs = vec![1.5, -0.5];
-            model.ma_coeffs = vec![1.0, 0.3];
-            model.sigma = 1.0;
-            
-            let result = generate_irregular_carma(py, &model, 10.0, 1.0, 0.2, Some(42));
-            
-            assert!(result.is_ok());
-            let (times, values) = result.unwrap();
-            
-            let times_vec: Vec<f64> = times.as_ref(py).to_vec().unwrap();
-            let values_vec: Vec<f64> = values.as_ref(py).to_vec().unwrap();
-            
-            assert_eq!(times_vec.len(), values_vec.len());
-            assert!(!times_vec.is_empty());
-            assert!(times_vec.iter().all(|&x| x.is_finite() && x >= 0.0));
-            assert!(values_vec.iter().all(|&x| x.is_finite()));
-        });
+        // Values should be finite
+        for value in values {
+            assert!(value.is_finite());
+        }
     }
 }

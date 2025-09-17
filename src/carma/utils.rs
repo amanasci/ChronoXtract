@@ -1,462 +1,414 @@
+use crate::carma::model::{CarmaModel, CarmaError};
 use pyo3::prelude::*;
-use nalgebra::{DMatrix, DVector, Complex};
-use num_complex::Complex64;
-use crate::carma::carma_model::{CarmaModel, StateSpaceModel, CarmaError};
+use num_complex::Complex;
 
-/// Check if CARMA model is stable (all roots in left half-plane)
+/// Check if a CARMA model is stable (all characteristic roots have negative real parts)
 #[pyfunction]
 pub fn check_carma_stability(model: &CarmaModel) -> PyResult<bool> {
-    if !model.is_valid() {
-        return Err(pyo3::exceptions::PyValueError::new_err("Invalid model"));
-    }
-    
-    let roots = compute_characteristic_roots(&model.ar_coeffs)?;
-    Ok(roots.iter().all(|root| root.re < 0.0))
+    Ok(model.is_stable())
 }
 
-/// Get characteristic roots of the CARMA model
-#[pyfunction]
+/// Get characteristic polynomial roots of a CARMA model
+#[pyfunction] 
 pub fn carma_characteristic_roots(model: &CarmaModel) -> PyResult<Vec<(f64, f64)>> {
-    if !model.is_valid() {
-        return Err(pyo3::exceptions::PyValueError::new_err("Invalid model"));
-    }
-    
-    let roots = compute_characteristic_roots(&model.ar_coeffs)?;
-    Ok(roots.iter().map(|c| (c.re, c.im)).collect())
-}
-
-/// Convert CARMA model to state-space representation
-#[pyfunction]
-pub fn carma_to_state_space(model: &CarmaModel) -> PyResult<StateSpaceModel> {
-    if !model.is_valid() {
-        return Err(pyo3::exceptions::PyValueError::new_err("Invalid model"));
-    }
-    
-    let p = model.p;
-    
-    // Construct companion form transition matrix
-    let mut transition = vec![vec![0.0; p]; p];
-    
-    // Identity in upper p-1 x p-1 block (shifted down by one row)
-    for i in 0..p-1 {
-        transition[i][i+1] = 1.0;
-    }
-    
-    // AR coefficients in the last row (negated for companion form)
-    for j in 0..p {
-        transition[p-1][j] = -model.ar_coeffs[p-1-j];
-    }
-    
-    // Observation vector (selects first state variable)
-    let mut observation = vec![0.0; p];
-    observation[0] = 1.0;
-    
-    // Process noise matrix (only affects last state)
-    let mut process_noise = vec![vec![0.0; p]; p];
-    process_noise[p-1][p-1] = model.sigma * model.sigma;
-    
-    Ok(StateSpaceModel {
-        transition_matrix: transition,
-        observation_vector: observation,
-        process_noise_matrix: process_noise,
-        observation_noise: 0.0, // Observational noise is typically separate
-    })
-}
-
-/// Compute matrix exponential for state transition
-pub fn matrix_exponential(matrix: &DMatrix<f64>, dt: f64) -> Result<DMatrix<f64>, CarmaError> {
-    let scaled_matrix = matrix * dt;
-    
-    // Use scaling and squaring for matrix exponential
-    // For small matrices, we can use eigen-decomposition or series expansion
-    if matrix.nrows() <= 10 {
-        matrix_exp_small(&scaled_matrix)
-    } else {
-        Err(CarmaError::NumericalError("Matrix too large for exponential".to_string()))
-    }
-}
-
-/// Matrix exponential for small matrices using series expansion
-fn matrix_exp_small(matrix: &DMatrix<f64>) -> Result<DMatrix<f64>, CarmaError> {
-    let n = matrix.nrows();
-    let mut result = DMatrix::identity(n, n);
-    let mut term = DMatrix::identity(n, n);
-    
-    // Series expansion: exp(A) = I + A + A²/2! + A³/3! + ...
-    for k in 1..=20 { // Limit to 20 terms for numerical stability
-        term = &term * matrix / k as f64;
-        result += &term;
-        
-        // Check convergence
-        if term.norm() < 1e-12 {
-            break;
-        }
-    }
-    
-    Ok(result)
-}
-
-/// Solve continuous-time Lyapunov equation: AX + XA' + Q = 0
-pub fn solve_lyapunov(a: &DMatrix<f64>, q: &DMatrix<f64>) -> Result<DMatrix<f64>, CarmaError> {
-    let n = a.nrows();
-    
-    // For small systems, use direct method
-    if n <= 5 {
-        solve_lyapunov_direct(a, q)
-    } else {
-        Err(CarmaError::NumericalError("Matrix too large for Lyapunov solver".to_string()))
-    }
-}
-
-/// Direct solution of Lyapunov equation for small matrices
-fn solve_lyapunov_direct(a: &DMatrix<f64>, q: &DMatrix<f64>) -> Result<DMatrix<f64>, CarmaError> {
-    let n = a.nrows();
-    
-    // Vectorize the equation: (I ⊗ A + A' ⊗ I) vec(X) = -vec(Q)
-    let mut kronecker = DMatrix::zeros(n * n, n * n);
-    
-    for i in 0..n {
-        for j in 0..n {
-            for k in 0..n {
-                for l in 0..n {
-                    let row = i * n + j;
-                    let col = k * n + l;
-                    
-                    if j == l {
-                        kronecker[(row, col)] += a[(i, k)];
-                    }
-                    if i == k {
-                        kronecker[(row, col)] += a[(j, l)];
-                    }
-                }
-            }
-        }
-    }
-    
-    // Solve the linear system
-    let q_vec = vectorize_matrix(q);
-    let neg_q_vec = -q_vec;
-    
-    match kronecker.lu().solve(&neg_q_vec) {
-        Some(x_vec) => Ok(unvectorize_matrix(&x_vec, n)),
-        None => Err(CarmaError::NumericalError("Failed to solve Lyapunov equation".to_string())),
-    }
-}
-
-/// Convert matrix to vector (column-major order)
-fn vectorize_matrix(matrix: &DMatrix<f64>) -> DVector<f64> {
-    let n = matrix.nrows();
-    let m = matrix.ncols();
-    let mut vec = DVector::zeros(n * m);
-    
-    for j in 0..m {
-        for i in 0..n {
-            vec[j * n + i] = matrix[(i, j)];
-        }
-    }
-    
-    vec
-}
-
-/// Convert vector back to matrix (column-major order)
-fn unvectorize_matrix(vec: &DVector<f64>, n: usize) -> DMatrix<f64> {
-    let m = vec.len() / n;
-    let mut matrix = DMatrix::zeros(n, m);
-    
-    for j in 0..m {
-        for i in 0..n {
-            matrix[(i, j)] = vec[j * n + i];
-        }
-    }
-    
-    matrix
-}
-
-/// Compute roots of characteristic polynomial using companion matrix
-fn compute_characteristic_roots(ar_coeffs: &[f64]) -> Result<Vec<Complex64>, CarmaError> {
-    let n = ar_coeffs.len();
-    
-    if n == 0 {
-        return Ok(vec![]);
-    }
-    
-    if n == 1 {
-        // Simple case: single root
-        Ok(vec![Complex64::new(-ar_coeffs[0], 0.0)])
-    } else if n == 2 {
-        // Quadratic formula
-        let a = 1.0;
-        let b = ar_coeffs[1];
-        let c = ar_coeffs[0];
-        
-        let discriminant = b * b - 4.0 * a * c;
-        if discriminant >= 0.0 {
-            let sqrt_d = discriminant.sqrt();
-            Ok(vec![
-                Complex64::new((-b + sqrt_d) / (2.0 * a), 0.0),
-                Complex64::new((-b - sqrt_d) / (2.0 * a), 0.0),
-            ])
-        } else {
-            let sqrt_d = (-discriminant).sqrt();
-            Ok(vec![
-                Complex64::new(-b / (2.0 * a), sqrt_d / (2.0 * a)),
-                Complex64::new(-b / (2.0 * a), -sqrt_d / (2.0 * a)),
-            ])
-        }
-    } else {
-        // General case: use companion matrix eigenvalue decomposition
-        compute_roots_companion_matrix(ar_coeffs)
-    }
-}
-
-/// Compute polynomial roots using companion matrix method
-fn compute_roots_companion_matrix(coeffs: &[f64]) -> Result<Vec<Complex64>, CarmaError> {
-    let n = coeffs.len();
-    if n == 0 {
-        return Ok(vec![]);
-    }
-    
-    // Create companion matrix
-    // For polynomial x^n + a_{n-1}x^{n-1} + ... + a_0 = 0
-    // Companion matrix is:
-    // [0 0 0 ... 0 -a_0]
-    // [1 0 0 ... 0 -a_1]
-    // [0 1 0 ... 0 -a_2]
-    // [...         ...  ]
-    // [0 0 0 ... 1 -a_{n-1}]
-    
-    let mut companion = DMatrix::zeros(n, n);
-    
-    // Fill subdiagonal with 1s
-    for i in 0..n-1 {
-        companion[(i+1, i)] = 1.0;
-    }
-    
-    // Fill last column with negated coefficients (in reverse order)
-    for i in 0..n {
-        companion[(i, n-1)] = -coeffs[n-1-i];
-    }
-    
-    // For eigenvalue computation, we need to use a different approach
-    // Let's implement a simple root finding using Newton-Raphson or similar
-    // For now, use a basic iterative method
-    
-    let mut roots = Vec::new();
-    
-    // Use Durand-Kerner method or similar for polynomial root finding
-    // Start with initial guesses on the complex plane
-    let mut guesses: Vec<Complex64> = (0..n).map(|i| {
-        let angle = 2.0 * std::f64::consts::PI * i as f64 / n as f64;
-        Complex64::new(angle.cos(), angle.sin())
-    }).collect();
-    
-    // Simple fixed-point iteration (not the most robust, but works for our purposes)
-    for _iter in 0..100 {
-        let mut new_guesses = Vec::new();
-        
-        for i in 0..n {
-            let mut numerator = Complex64::new(1.0, 0.0);
-            let mut denominator = Complex64::new(0.0, 0.0);
-            
-            for j in 0..n {
-                if i != j {
-                    numerator *= guesses[i] - guesses[j];
-                }
-            }
-            
-            // Evaluate polynomial and derivative at current guess
-            let mut poly_val = Complex64::new(1.0, 0.0);
-            let mut poly_deriv = Complex64::new(0.0, 0.0);
-            
-            for (k, &coeff) in coeffs.iter().enumerate() {
-                poly_deriv = poly_deriv * guesses[i] + poly_val;
-                poly_val = poly_val * guesses[i] + Complex64::new(coeff, 0.0);
-            }
-            
-            if poly_deriv.norm() > 1e-10 {
-                let new_guess = guesses[i] - poly_val / poly_deriv;
-                new_guesses.push(new_guess);
-            } else {
-                new_guesses.push(guesses[i]);
-            }
-        }
-        
-        guesses = new_guesses;
-    }
-    
-    // Check which roots are actually close to being roots
-    for &guess in &guesses {
-        // Evaluate polynomial at this point
-        let mut poly_val = Complex64::new(1.0, 0.0);
-        for &coeff in coeffs {
-            poly_val = poly_val * guess + Complex64::new(coeff, 0.0);
-        }
-        
-        if poly_val.norm() < 1e-6 {
-            roots.push(guess);
-        }
-    }
-    
-    // If we didn't find enough roots, add the remaining guesses
-    while roots.len() < n {
-        roots.push(Complex64::new(0.0, 0.0));
-    }
+    let roots = compute_characteristic_roots(model)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
     
     Ok(roots)
 }
 
-/// Validate time series data
-pub fn validate_time_series(times: &[f64], values: &[f64], errors: Option<&[f64]>) -> Result<(), CarmaError> {
+/// Compute model order selection criteria for a range of (p,q) values
+#[pyfunction]
+pub fn carma_model_selection(
+    times: numpy::PyReadonlyArray1<f64>,
+    values: numpy::PyReadonlyArray1<f64>,
+    max_p: usize,
+    max_q: Option<usize>,
+    errors: Option<numpy::PyReadonlyArray1<f64>>,
+) -> PyResult<Vec<(usize, usize, f64, f64)>> {
+    let times_slice = times.as_slice()?;
+    let values_slice = values.as_slice()?;
+    let errors_slice = errors.as_ref().map(|e| e.as_slice()).transpose()?;
+    
+    let max_q_val = max_q.unwrap_or(max_p - 1);
+    
+    if max_p == 0 {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "max_p must be greater than 0"
+        ));
+    }
+    
+    if max_q_val >= max_p {
+        return Err(PyErr::new::<pyo3::exceptions::PyValueError, _>(
+            "max_q must be less than max_p"
+        ));
+    }
+    
+    let mut results = Vec::new();
+    
+    // Try all (p,q) combinations
+    for p in 1..=max_p {
+        for q in 0..=max_q_val.min(p-1) {
+            // Quick MLE fit to get likelihood
+            match quick_mle_fit(times_slice, values_slice, errors_slice, p, q) {
+                Ok((loglik, n_params)) => {
+                    let n_data = times_slice.len() as f64;
+                    let aic = -2.0 * loglik + 2.0 * n_params as f64;
+                    let bic = -2.0 * loglik + n_params as f64 * n_data.ln();
+                    results.push((p, q, aic, bic));
+                }
+                Err(_) => {
+                    // Skip if fit failed
+                    continue;
+                }
+            }
+        }
+    }
+    
+    Ok(results)
+}
+
+/// Convert CARMA model to power spectral density function
+#[pyfunction]
+pub fn carma_power_spectrum(
+    model: &CarmaModel,
+    frequencies: numpy::PyReadonlyArray1<f64>,
+) -> PyResult<Vec<f64>> {
+    let freq_slice = frequencies.as_slice()?;
+    
+    let psd = compute_power_spectral_density(model, freq_slice)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+    
+    Ok(psd)
+}
+
+/// Compute autocovariance function of CARMA model
+#[pyfunction]
+pub fn carma_autocovariance(
+    model: &CarmaModel,
+    lags: numpy::PyReadonlyArray1<f64>,
+) -> PyResult<Vec<f64>> {
+    let lags_slice = lags.as_slice()?;
+    
+    let autocov = compute_autocovariance_function(model, lags_slice)
+        .map_err(|e| PyErr::new::<pyo3::exceptions::PyValueError, _>(e.to_string()))?;
+    
+    Ok(autocov)
+}
+
+/// Internal functions
+
+/// Compute characteristic polynomial roots
+fn compute_characteristic_roots(model: &CarmaModel) -> Result<Vec<(f64, f64)>, CarmaError> {
+    let coeffs = model.get_characteristic_polynomial();
+    
+    // For simple cases, use analytical solutions
+    match model.p {
+        1 => {
+            // s + α_0 = 0 => s = -α_0
+            let root = -model.ar_coeffs[0];
+            Ok(vec![(root, 0.0)])
+        }
+        2 => {
+            // s^2 + α_1 s + α_0 = 0
+            let a = 1.0;
+            let b = model.ar_coeffs[1];
+            let c = model.ar_coeffs[0];
+            
+            let discriminant = b * b - 4.0 * a * c;
+            
+            if discriminant >= 0.0 {
+                let sqrt_disc = discriminant.sqrt();
+                let root1 = (-b + sqrt_disc) / (2.0 * a);
+                let root2 = (-b - sqrt_disc) / (2.0 * a);
+                Ok(vec![(root1, 0.0), (root2, 0.0)])
+            } else {
+                let real_part = -b / (2.0 * a);
+                let imag_part = (-discriminant).sqrt() / (2.0 * a);
+                Ok(vec![(real_part, imag_part), (real_part, -imag_part)])
+            }
+        }
+        _ => {
+            // For higher-order, use numerical root finding (simplified)
+            // This is a placeholder - in practice, we'd use a proper root finder
+            Err(CarmaError::NumericalError {
+                message: format!("Characteristic root computation not implemented for p > 2, got p = {}", model.p)
+            })
+        }
+    }
+}
+
+/// Quick MLE fit for model selection (simplified)
+fn quick_mle_fit(
+    times: &[f64],
+    values: &[f64],
+    errors: Option<&[f64]>,
+    p: usize,
+    q: usize,
+) -> Result<(f64, usize), CarmaError> {
+    use crate::carma::mle::{fit_carma_mle, MleConfig};
+    
+    // Use simplified configuration for speed
+    let config = MleConfig {
+        max_iter: 100,
+        tolerance: 1e-4,
+        n_trials: 3,
+        n_jobs: 1,
+        seed: Some(42),
+    };
+    
+    let result = fit_carma_mle(times, values, errors, p, q, &config)?;
+    let n_params = result.model.num_params();
+    
+    Ok((result.loglikelihood, n_params))
+}
+
+/// Compute power spectral density at given frequencies
+fn compute_power_spectral_density(model: &CarmaModel, frequencies: &[f64]) -> Result<Vec<f64>, CarmaError> {
+    let mut psd = Vec::with_capacity(frequencies.len());
+    
+    for &f in frequencies {
+        let omega = 2.0 * std::f64::consts::PI * f;
+        let s = Complex::new(0.0, omega);
+        
+        let psd_val = compute_psd_at_frequency(model, s)?;
+        psd.push(psd_val);
+    }
+    
+    Ok(psd)
+}
+
+/// Compute PSD at a single complex frequency
+fn compute_psd_at_frequency(model: &CarmaModel, s: Complex<f64>) -> Result<f64, CarmaError> {
+    // PSD(ω) = σ² |Q(iω)|² / |P(iω)|²
+    // where P(s) is the AR polynomial and Q(s) is the MA polynomial
+    
+    // Compute AR polynomial P(s) = s^p + α_{p-1} s^{p-1} + ... + α_0
+    let mut ar_poly = Complex::new(0.0, 0.0);
+    let mut s_power = Complex::new(1.0, 0.0);
+    
+    for i in 0..model.p {
+        ar_poly += Complex::new(model.ar_coeffs[i], 0.0) * s_power;
+        s_power *= s;
+    }
+    ar_poly += s_power; // Add s^p term
+    
+    // Compute MA polynomial Q(s) = β_q s^q + ... + β_0
+    let mut ma_poly = Complex::new(0.0, 0.0);
+    s_power = Complex::new(1.0, 0.0);
+    
+    for i in 0..=model.q {
+        ma_poly += Complex::new(model.ma_coeffs[i], 0.0) * s_power;
+        s_power *= s;
+    }
+    
+    // Compute PSD
+    let ar_mag_sq = ar_poly.norm_sqr();
+    let ma_mag_sq = ma_poly.norm_sqr();
+    
+    if ar_mag_sq < 1e-14 {
+        return Err(CarmaError::NumericalError {
+            message: "AR polynomial is too close to zero".to_string()
+        });
+    }
+    
+    let psd = model.sigma * model.sigma * ma_mag_sq / ar_mag_sq;
+    
+    Ok(psd)
+}
+
+/// Compute autocovariance function at given lags
+fn compute_autocovariance_function(model: &CarmaModel, lags: &[f64]) -> Result<Vec<f64>, CarmaError> {
+    let mut autocov = Vec::with_capacity(lags.len());
+    
+    // For CARMA models, the autocovariance has a specific analytical form
+    // This is a simplified implementation for low-order models
+    
+    for &lag in lags {
+        let cov_val = compute_autocovariance_at_lag(model, lag.abs())?;
+        autocov.push(cov_val);
+    }
+    
+    Ok(autocov)
+}
+
+/// Compute autocovariance at a single lag
+fn compute_autocovariance_at_lag(model: &CarmaModel, lag: f64) -> Result<f64, CarmaError> {
+    // For CAR(1): C(τ) = σ²/(2α) * exp(-α*τ)
+    if model.p == 1 && model.q == 0 {
+        let alpha = model.ar_coeffs[0];
+        if alpha <= 0.0 {
+            return Err(CarmaError::InvalidParameter {
+                message: "AR coefficient must be positive for CAR(1)".to_string()
+            });
+        }
+        
+        let variance = model.sigma * model.sigma / (2.0 * alpha);
+        let autocov = variance * (-alpha * lag).exp();
+        return Ok(autocov);
+    }
+    
+    // For higher-order models, this requires more complex calculations
+    // involving the characteristic roots and residues
+    // For now, return a placeholder
+    Err(CarmaError::NumericalError {
+        message: format!("Autocovariance computation not implemented for CARMA({}, {})", model.p, model.q)
+    })
+}
+
+/// Validate time series data for CARMA fitting
+pub fn validate_carma_data(
+    times: &[f64],
+    values: &[f64],
+    errors: Option<&[f64]>,
+) -> Result<(), CarmaError> {
     if times.is_empty() || values.is_empty() {
-        return Err(CarmaError::InvalidData("Empty time series".to_string()));
+        return Err(CarmaError::DataValidationError {
+            message: "Time series data cannot be empty".to_string()
+        });
     }
     
     if times.len() != values.len() {
-        return Err(CarmaError::InvalidData("Time and value arrays have different lengths".to_string()));
+        return Err(CarmaError::DataValidationError {
+            message: format!("Times and values must have same length: {} vs {}", times.len(), values.len())
+        });
     }
     
     if let Some(errs) = errors {
         if errs.len() != times.len() {
-            return Err(CarmaError::InvalidData("Error array has different length".to_string()));
+            return Err(CarmaError::DataValidationError {
+                message: format!("Errors must have same length as times: {} vs {}", errs.len(), times.len())
+            });
         }
         
-        if errs.iter().any(|&e| e <= 0.0 || !e.is_finite()) {
-            return Err(CarmaError::InvalidData("Errors must be positive and finite".to_string()));
+        // Check that errors are positive
+        for (i, &err) in errs.iter().enumerate() {
+            if err <= 0.0 || !err.is_finite() {
+                return Err(CarmaError::DataValidationError {
+                    message: format!("Error value at index {} is not positive and finite: {}", i, err)
+                });
+            }
         }
     }
     
-    if times.iter().any(|&t| !t.is_finite()) {
-        return Err(CarmaError::InvalidData("Times must be finite".to_string()));
-    }
-    
-    if values.iter().any(|&v| !v.is_finite()) {
-        return Err(CarmaError::InvalidData("Values must be finite".to_string()));
-    }
-    
-    // Check if times are sorted
-    for i in 1..times.len() {
-        if times[i] <= times[i-1] {
-            return Err(CarmaError::InvalidData("Times must be strictly increasing".to_string()));
+    // Check that times are finite and in ascending order
+    for (i, &t) in times.iter().enumerate() {
+        if !t.is_finite() {
+            return Err(CarmaError::DataValidationError {
+                message: format!("Time value at index {} is not finite: {}", i, t)
+            });
         }
+        
+        if i > 0 && t <= times[i-1] {
+            return Err(CarmaError::DataValidationError {
+                message: format!("Times must be in strictly ascending order: times[{}]={} <= times[{}]={}", 
+                    i, t, i-1, times[i-1])
+            });
+        }
+    }
+    
+    // Check that values are finite
+    for (i, &v) in values.iter().enumerate() {
+        if !v.is_finite() {
+            return Err(CarmaError::DataValidationError {
+                message: format!("Value at index {} is not finite: {}", i, v)
+            });
+        }
+    }
+    
+    // Check minimum number of data points
+    if times.len() < 10 {
+        return Err(CarmaError::DataValidationError {
+            message: format!("Need at least 10 data points for reliable fitting, got {}", times.len())
+        });
     }
     
     Ok(())
 }
 
-/// Compute autocorrelation function for model validation
-pub fn autocorrelation_function(_ar_coeffs: &[f64], _ma_coeffs: &[f64], lags: &[f64]) -> Vec<f64> {
-    // Placeholder implementation - would need proper autocorrelation calculation
-    lags.iter().map(|&lag| (-lag.abs()).exp()).collect()
-}
-
-/// Compute power spectral density
-pub fn power_spectral_density(ar_coeffs: &[f64], ma_coeffs: &[f64], sigma: f64, frequencies: &[f64]) -> Vec<f64> {
-    frequencies.iter().map(|&freq| {
-        let omega = 2.0 * std::f64::consts::PI * freq;
-        let i = Complex64::new(0.0, 1.0);
-        
-        // Evaluate MA polynomial at i*omega
-        let mut ma_val = Complex64::new(0.0, 0.0);
-        for (k, &coeff) in ma_coeffs.iter().enumerate() {
-            ma_val += coeff * (i * omega).powf(k as f64);
+/// Compute theoretical variance of CARMA process
+pub fn carma_theoretical_variance(model: &CarmaModel) -> Result<f64, CarmaError> {
+    // For CAR(1): Var = σ²/(2α)
+    if model.p == 1 && model.q == 0 {
+        let alpha = model.ar_coeffs[0];
+        if alpha <= 0.0 {
+            return Err(CarmaError::InvalidParameter {
+                message: "AR coefficient must be positive".to_string()
+            });
         }
-        
-        // Evaluate AR polynomial at i*omega  
-        let mut ar_val = Complex64::new(1.0, 0.0);
-        for (k, &coeff) in ar_coeffs.iter().enumerate() {
-            ar_val += coeff * (i * omega).powf((k + 1) as f64);
-        }
-        
-        // PSD = sigma^2 * |MA(iω)|² / |AR(iω)|²
-        let ma_mag_sq = ma_val.norm_sqr();
-        let ar_mag_sq = ar_val.norm_sqr();
-        
-        if ar_mag_sq > 0.0 {
-            sigma * sigma * ma_mag_sq / ar_mag_sq
-        } else {
-            0.0
-        }
-    }).collect()
+        return Ok(model.sigma * model.sigma / (2.0 * alpha));
+    }
+    
+    // For higher-order models, this involves solving the Lyapunov equation
+    // which we implement in the likelihood module
+    use crate::carma::likelihood::StateSpaceModel;
+    
+    let state_space = StateSpaceModel::from_carma_model(model)?;
+    let variance = state_space.steady_state_cov[(0, 0)];
+    
+    Ok(variance)
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
-    use crate::carma::carma_model::CarmaModel;
     
     #[test]
-    fn test_carma_stability() {
+    fn test_characteristic_roots_car1() {
+        let mut model = CarmaModel::new(1, 0).unwrap();
+        model.ar_coeffs = vec![2.0];
+        
+        let roots = compute_characteristic_roots(&model).unwrap();
+        assert_eq!(roots.len(), 1);
+        assert!((roots[0].0 + 2.0).abs() < 1e-10);
+        assert!(roots[0].1.abs() < 1e-10);
+    }
+    
+    #[test]
+    fn test_characteristic_roots_carma21() {
         let mut model = CarmaModel::new(2, 1).unwrap();
-        model.ar_coeffs = vec![0.5, 0.3]; // These should be stable
-        model.ma_coeffs = vec![1.0, 0.3];
+        model.ar_coeffs = vec![1.0, 3.0]; // s^2 + 3s + 1 = 0
+        
+        let roots = compute_characteristic_roots(&model).unwrap();
+        assert_eq!(roots.len(), 2);
+        
+        // Verify roots satisfy the equation
+        for &(re, im) in &roots {
+            let s = Complex::new(re, im);
+            let poly_val = s * s + Complex::new(3.0, 0.0) * s + Complex::new(1.0, 0.0);
+            assert!(poly_val.norm() < 1e-10);
+        }
+    }
+    
+    #[test]
+    fn test_data_validation() {
+        let times = vec![0.0, 1.0, 2.0];
+        let values = vec![1.0, 2.0, 3.0];
+        let errors = vec![0.1, 0.1, 0.1];
+        
+        assert!(validate_carma_data(&times, &values, Some(&errors)).is_ok());
+        
+        // Test mismatched lengths
+        let bad_values = vec![1.0, 2.0];
+        assert!(validate_carma_data(&times, &bad_values, None).is_err());
+        
+        // Test non-ascending times
+        let bad_times = vec![0.0, 2.0, 1.0];
+        assert!(validate_carma_data(&bad_times, &values, None).is_err());
+        
+        // Test negative errors
+        let bad_errors = vec![0.1, -0.1, 0.1];
+        assert!(validate_carma_data(&times, &values, Some(&bad_errors)).is_err());
+    }
+    
+    #[test]
+    fn test_car1_variance() {
+        let mut model = CarmaModel::new(1, 0).unwrap();
+        model.ar_coeffs = vec![2.0];
         model.sigma = 1.0;
         
-        // For now, just test that the function doesn't crash
-        let result = check_carma_stability(&model);
-        assert!(result.is_ok());
-    }
-    
-    #[test]
-    fn test_state_space_conversion() {
-        let mut model = CarmaModel::new(3, 1).unwrap();
-        model.ar_coeffs = vec![2.0, -1.5, 0.5];
-        model.ma_coeffs = vec![1.0, 0.3];
-        model.sigma = 1.0;
-        
-        let ss = carma_to_state_space(&model).unwrap();
-        assert_eq!(ss.transition_matrix.len(), 3);
-        assert_eq!(ss.observation_vector.len(), 3);
-        assert_eq!(ss.process_noise_matrix.len(), 3);
-    }
-    
-    #[test]
-    fn test_time_series_validation() {
-        let times = vec![1.0, 2.0, 3.0];
-        let values = vec![1.1, 2.2, 3.3];
-        let errors = vec![0.1, 0.2, 0.15];
-        
-        assert!(validate_time_series(&times, &values, Some(&errors)).is_ok());
-        
-        // Test various error conditions
-        assert!(validate_time_series(&[], &[], None).is_err());
-        assert!(validate_time_series(&times, &[], None).is_err());
-        assert!(validate_time_series(&times, &values, Some(&[0.1])).is_err());
-        assert!(validate_time_series(&times, &values, Some(&[0.1, -0.2, 0.15])).is_err());
-        
-        let unsorted_times = vec![2.0, 1.0, 3.0];
-        assert!(validate_time_series(&unsorted_times, &values, None).is_err());
-    }
-    
-    #[test]
-    fn test_matrix_exponential() {
-        let matrix = DMatrix::from_row_slice(2, 2, &[0.0, 1.0, -1.0, -2.0]);
-        let result = matrix_exponential(&matrix, 0.1).unwrap();
-        
-        assert_eq!(result.nrows(), 2);
-        assert_eq!(result.ncols(), 2);
-        assert!(result[(0,0)].is_finite());
-    }
-    
-    #[test] 
-    fn test_characteristic_roots() {
-        // Test simple cases
-        let roots1 = compute_characteristic_roots(&[1.0]).unwrap();
-        assert_eq!(roots1.len(), 1);
-        assert_eq!(roots1[0].re, -1.0);
-        
-        let roots2 = compute_characteristic_roots(&[1.0, 2.0]).unwrap();
-        assert_eq!(roots2.len(), 2);
-    }
-    
-    #[test]
-    fn test_power_spectral_density() {
-        let ar_coeffs = vec![1.5, -0.5];
-        let ma_coeffs = vec![1.0, 0.3];
-        let sigma = 1.0;
-        let frequencies = vec![0.1, 0.2, 0.5];
-        
-        let psd = power_spectral_density(&ar_coeffs, &ma_coeffs, sigma, &frequencies);
-        assert_eq!(psd.len(), 3);
-        assert!(psd.iter().all(|&p| p >= 0.0 && p.is_finite()));
+        let variance = carma_theoretical_variance(&model).unwrap();
+        let expected = 1.0 / (2.0 * 2.0); // σ²/(2α)
+        assert!((variance - expected).abs() < 1e-10);
     }
 }
