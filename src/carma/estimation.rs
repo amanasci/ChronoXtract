@@ -494,7 +494,8 @@ fn run_adaptive_mcmc_chain(
             propose_parameters_simple(&current_params, &param_bounds, &mut rng)?
         };
         
-        // Evaluate likelihood at proposal with caching for efficiency
+        // Evaluate likelihood at proposal with Delayed Rejection (DRAM)
+        let mut accepted = false;
         if let Ok(proposal_loglik) = compute_log_likelihood_from_params(&proposal_params, times, values, errors, p, q) {
             // Metropolis-Hastings acceptance criterion
             let log_ratio = proposal_loglik - current_loglik;
@@ -505,6 +506,31 @@ fn run_adaptive_mcmc_chain(
                 current_params = proposal_params;
                 current_loglik = proposal_loglik;
                 acceptance_count += 1;
+                accepted = true;
+            }
+        }
+        
+        // Delayed Rejection: if first proposal was rejected, try a smaller proposal
+        if !accepted && i >= adaptation_start {
+            let smaller_proposal = if adaptation_samples.len() >= n_params * 2 {
+                // Use smaller multivariate proposal
+                let smaller_cov = &proposal_cov * 0.25; // 25% of the adaptive covariance
+                propose_parameters_adaptive(&current_params, &smaller_cov, &param_bounds, &mut rng)?
+            } else {
+                // Use smaller univariate proposals
+                propose_parameters_simple_scaled(&current_params, &param_bounds, &mut rng, 0.25)?
+            };
+            
+            if let Ok(smaller_loglik) = compute_log_likelihood_from_params(&smaller_proposal, times, values, errors, p, q) {
+                let log_ratio = smaller_loglik - current_loglik;
+                let accept_prob = log_ratio.exp().min(1.0);
+                
+                if rng.gen::<f64>() < accept_prob {
+                    // Accept smaller proposal
+                    current_params = smaller_proposal;
+                    current_loglik = smaller_loglik;
+                    acceptance_count += 1;
+                }
             }
         }
         
@@ -621,12 +647,15 @@ fn update_adaptive_covariance(
     }
     new_cov /= (n_samples - 1) as f64;
     
-    // Apply adaptive scaling (Haario et al. 2001)
+    // Apply adaptive scaling (Haario et al. 2001) with adjusted scaling for CARMA
     let s_d = 2.4_f64.powi(2) / n_params as f64; // Optimal scaling factor
     let eps = 1e-6; // Regularization parameter
     
+    // Scale down the proposal covariance to target 20-40% acceptance rate for CARMA
+    let carma_scale = 0.5; // Reduce proposals by 50% for better acceptance rates
+    
     // Update proposal covariance with regularization
-    *proposal_cov = s_d * (&new_cov + eps * DMatrix::identity(n_params, n_params));
+    *proposal_cov = s_d * carma_scale * (&new_cov + eps * DMatrix::identity(n_params, n_params));
     
     // Ensure positive definiteness by adding regularization if needed
     for i in 0..n_params {
@@ -719,6 +748,16 @@ fn propose_parameters_simple(
     bounds: &[(f64, f64)],
     rng: &mut StdRng,
 ) -> Result<Vec<f64>, CarmaError> {
+    propose_parameters_simple_scaled(current, bounds, rng, 1.0)
+}
+
+/// Simple univariate proposals with scaling factor
+fn propose_parameters_simple_scaled(
+    current: &[f64],
+    bounds: &[(f64, f64)],
+    rng: &mut StdRng,
+    scale_factor: f64,
+) -> Result<Vec<f64>, CarmaError> {
     let mut proposal = Vec::with_capacity(current.len());
     
     for (_i, (&curr_val, &(min_bound, max_bound))) in current.iter().zip(bounds.iter()).enumerate() {
@@ -726,8 +765,8 @@ fn propose_parameters_simple(
         let range = max_bound - min_bound;
         let param_scale = curr_val.abs().max(0.1);
         
-        // Use smaller initial proposals for better initial exploration
-        let scale = (param_scale * 0.02).max(range * 0.005).min(range * 0.05);
+        // Use moderate initial proposals for better balance between exploration and acceptance
+        let scale = (param_scale * 0.05).max(range * 0.01).min(range * 0.1) * scale_factor;
         
         let normal = Normal::new(curr_val, scale)
             .map_err(|e| CarmaError::InvalidParameters(format!("Invalid normal distribution: {}", e)))?;
