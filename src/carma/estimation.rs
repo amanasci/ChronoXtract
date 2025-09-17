@@ -476,22 +476,26 @@ fn run_adaptive_mcmc_chain(
     let mut sample_cov = DMatrix::zeros(n_params, n_params);
     let mut adaptation_samples = Vec::new();
     
-    // MCMC sampling parameters
+    // MCMC sampling parameters with adaptive scaling
     let total_samples = n_samples + burn_in;
     let mut chain_samples = Vec::with_capacity(n_samples);
     let mut acceptance_count = 0;
     let adaptation_start = 10.max(burn_in / 10); // Start adapting early but not immediately
     let adaptation_interval = 10; // More frequent adaptation
     
+    // Track acceptance rate for adaptive scaling
+    let mut recent_acceptances = 0;
+    let mut proposal_scale_factor = 1.0; // Dynamic scaling factor
+    
     // MCMC iterations
     for i in 0..total_samples {
         // Propose new parameters using current covariance
         let proposal_params = if i >= adaptation_start && adaptation_samples.len() >= n_params * 2 {
             // Use adaptive multivariate proposal once we have enough samples
-            propose_parameters_adaptive(&current_params, &proposal_cov, &param_bounds, &mut rng)?
+            propose_parameters_adaptive_scaled(&current_params, &proposal_cov, &param_bounds, &mut rng, proposal_scale_factor)?
         } else {
             // Use simple univariate proposals during initial phase
-            propose_parameters_simple(&current_params, &param_bounds, &mut rng)?
+            propose_parameters_simple_scaled(&current_params, &param_bounds, &mut rng, proposal_scale_factor)?
         };
         
         // Evaluate likelihood at proposal with Delayed Rejection (DRAM)
@@ -506,6 +510,7 @@ fn run_adaptive_mcmc_chain(
                 current_params = proposal_params;
                 current_loglik = proposal_loglik;
                 acceptance_count += 1;
+                recent_acceptances += 1;
                 accepted = true;
             }
         }
@@ -514,11 +519,11 @@ fn run_adaptive_mcmc_chain(
         if !accepted && i >= adaptation_start {
             let smaller_proposal = if adaptation_samples.len() >= n_params * 2 {
                 // Use smaller multivariate proposal
-                let smaller_cov = &proposal_cov * 0.25; // 25% of the adaptive covariance
-                propose_parameters_adaptive(&current_params, &smaller_cov, &param_bounds, &mut rng)?
+                let smaller_cov = &proposal_cov * (0.25 * proposal_scale_factor);
+                propose_parameters_adaptive_scaled(&current_params, &smaller_cov, &param_bounds, &mut rng, 1.0)?
             } else {
                 // Use smaller univariate proposals
-                propose_parameters_simple_scaled(&current_params, &param_bounds, &mut rng, 0.25)?
+                propose_parameters_simple_scaled(&current_params, &param_bounds, &mut rng, 0.25 * proposal_scale_factor)?
             };
             
             if let Ok(smaller_loglik) = compute_log_likelihood_from_params(&smaller_proposal, times, values, errors, p, q) {
@@ -530,8 +535,30 @@ fn run_adaptive_mcmc_chain(
                     current_params = smaller_proposal;
                     current_loglik = smaller_loglik;
                     acceptance_count += 1;
+                    recent_acceptances += 1;
                 }
             }
+        }
+        
+        // Adaptive proposal scaling every 25 iterations during burn-in
+        if i < burn_in && i > 0 && i % 25 == 0 {
+            let recent_acceptance_rate = recent_acceptances as f64 / 25.0;
+            
+            // Target acceptance rate of 25% for CARMA models
+            if recent_acceptance_rate > 0.35 {
+                proposal_scale_factor *= 0.5; // Much more aggressive reduction
+            } else if recent_acceptance_rate < 0.15 {
+                proposal_scale_factor *= 1.5; // More aggressive increase
+            }
+            
+            // Keep scaling factor in reasonable bounds
+            proposal_scale_factor = proposal_scale_factor.max(0.001).min(10.0);
+            recent_acceptances = 0;
+        }
+        
+        // Reset counter every 25 iterations for proper tracking
+        if i % 25 == 0 {
+            recent_acceptances = 0;
         }
         
         // Store sample for adaptation during burn-in and early post-burn-in
@@ -647,20 +674,30 @@ fn update_adaptive_covariance(
     }
     new_cov /= (n_samples - 1) as f64;
     
-    // Apply adaptive scaling (Haario et al. 2001) with adjusted scaling for CARMA
+    // Apply adaptive scaling (Haario et al. 2001) with CARMA-specific tuning
     let s_d = 2.4_f64.powi(2) / n_params as f64; // Optimal scaling factor
     let eps = 1e-6; // Regularization parameter
     
-    // Scale down the proposal covariance to target 20-40% acceptance rate for CARMA
-    let carma_scale = 0.5; // Reduce proposals by 50% for better acceptance rates
+    // More aggressive scaling for CARMA models - target 25% acceptance rate
+    let carma_scale = match n_params {
+        5 => 0.05,  // CARMA(2,1) - extremely small proposals
+        6 => 0.03,  // CARMA(3,1) - tiny proposals
+        7 => 0.02,  // CARMA(3,2) - minuscule proposals
+        8 => 0.01,  // CARMA(4,2) - incredibly small
+        _ => 0.1 / (n_params as f64).powi(2),  // General case - very aggressive scaling
+    };
     
-    // Update proposal covariance with regularization
+    // Update proposal covariance with more aggressive regularization
     *proposal_cov = s_d * carma_scale * (&new_cov + eps * DMatrix::identity(n_params, n_params));
     
-    // Ensure positive definiteness by adding regularization if needed
+    // Ensure positive definiteness and reasonable bounds
     for i in 0..n_params {
         if proposal_cov[(i, i)] < eps {
             proposal_cov[(i, i)] = eps;
+        }
+        // Cap maximum proposal variance to prevent overshooting
+        if proposal_cov[(i, i)] > 0.1 {
+            proposal_cov[(i, i)] = 0.1;
         }
     }
     
@@ -677,22 +714,36 @@ fn propose_parameters_adaptive(
     bounds: &[(f64, f64)],
     rng: &mut StdRng,
 ) -> Result<Vec<f64>, CarmaError> {
+    propose_parameters_adaptive_scaled(current, covariance, bounds, rng, 1.0)
+}
+
+/// Propose new parameters using adaptive multivariate normal distribution with scaling
+fn propose_parameters_adaptive_scaled(
+    current: &[f64],
+    covariance: &DMatrix<f64>,
+    bounds: &[(f64, f64)],
+    rng: &mut StdRng,
+    scale_factor: f64,
+) -> Result<Vec<f64>, CarmaError> {
     let n_params = current.len();
     let current_vec = DVector::from_vec(current.to_vec());
     
+    // Scale the covariance matrix
+    let scaled_cov = covariance * scale_factor;
+    
     // Use Cholesky decomposition for efficient multivariate normal sampling
-    let chol = match Cholesky::new(covariance.clone()) {
+    let chol = match Cholesky::new(scaled_cov.clone()) {
         Some(c) => c,
         None => {
             // Fallback to regularized version if not positive definite
-            let mut regularized = covariance.clone();
+            let mut regularized = scaled_cov.clone();
             for i in 0..n_params {
                 regularized[(i, i)] += 1e-4; // Stronger regularization
             }
             Cholesky::new(regularized).unwrap_or_else(|| {
                 // Final fallback to diagonal if still fails
                 let diag = DMatrix::from_diagonal(&DVector::from_vec(
-                    (0..n_params).map(|i| covariance[(i, i)].max(1e-4)).collect()
+                    (0..n_params).map(|i| scaled_cov[(i, i)].max(1e-4)).collect()
                 ));
                 Cholesky::new(diag).expect("Diagonal matrix should always decompose")
             })
@@ -761,12 +812,12 @@ fn propose_parameters_simple_scaled(
     let mut proposal = Vec::with_capacity(current.len());
     
     for (_i, (&curr_val, &(min_bound, max_bound))) in current.iter().zip(bounds.iter()).enumerate() {
-        // Adaptive scaling based on parameter magnitude and bounds
+        // Much more aggressive scaling to target 25% acceptance rate
         let range = max_bound - min_bound;
         let param_scale = curr_val.abs().max(0.1);
         
-        // Use moderate initial proposals for better balance between exploration and acceptance
-        let scale = (param_scale * 0.05).max(range * 0.01).min(range * 0.1) * scale_factor;
+        // Extremely small initial proposals for better acceptance rates
+        let scale = (param_scale * 0.001 * scale_factor).max(range * 0.0001).min(range * 0.005);
         
         let normal = Normal::new(curr_val, scale)
             .map_err(|e| CarmaError::InvalidParameters(format!("Invalid normal distribution: {}", e)))?;
