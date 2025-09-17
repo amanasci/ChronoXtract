@@ -418,7 +418,7 @@ impl StateSpaceModel {
         let p = params.p;
         
         // Compute AR roots (eigenvalues)
-        let lambda = compute_ar_roots(&params.ar_coeffs)?;
+        let lambda = math_compute_ar_roots(&params.ar_coeffs)?;
         
         // Validate stationarity
         if lambda.iter().any(|&root| root.re >= 0.0) {
@@ -426,13 +426,13 @@ impl StateSpaceModel {
         }
         
         // Compute observation vector from MA coefficients
-        let observation = compute_observation_vector(&params.ma_coeffs, &lambda)?;
+        let observation = math_compute_observation_vector(&params.ma_coeffs, &lambda)?;
         
         // Compute process noise covariance
-        let process_noise_cov = compute_process_noise_covariance(&lambda, params.sigma)?;
+        let process_noise_cov = math_compute_process_noise_covariance(&lambda, params.sigma)?;
         
         // Compute stationary covariance
-        let stationary_cov = compute_stationary_covariance(&lambda, &process_noise_cov)?;
+        let stationary_cov = math_compute_stationary_covariance(&lambda, &process_noise_cov)?;
         
         Ok(StateSpaceModel {
             lambda,
@@ -444,23 +444,9 @@ impl StateSpaceModel {
     }
 }
 
-// Placeholder functions - will be implemented in math module
-fn compute_ar_roots(_ar_coeffs: &[f64]) -> Result<Vec<Complex64>, CarmaError> {
-    // Placeholder implementation
-    Ok(vec![Complex64::new(-1.0, 0.0)])
-}
-
-fn compute_observation_vector(_ma_coeffs: &[f64], _lambda: &[Complex64]) -> Result<DVector<f64>, CarmaError> {
-    // Placeholder implementation
-    Ok(DVector::from_element(1, 1.0))
-}
-
-fn compute_process_noise_covariance(_lambda: &[Complex64], _sigma: f64) -> Result<DMatrix<f64>, CarmaError> {
-    // Placeholder implementation
-    Ok(DMatrix::identity(1, 1))
-}
-
-fn compute_stationary_covariance(_lambda: &[Complex64], _process_noise: &DMatrix<f64>) -> Result<DMatrix<f64>, CarmaError> {
-    // Placeholder implementation
-    Ok(DMatrix::identity(1, 1))
-}
+use crate::carma::math::{
+    compute_ar_roots as math_compute_ar_roots,
+    compute_observation_vector as math_compute_observation_vector, 
+    compute_process_noise_covariance as math_compute_process_noise_covariance,
+    compute_stationary_covariance as math_compute_stationary_covariance,
+};
