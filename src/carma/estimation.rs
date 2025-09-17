@@ -480,17 +480,17 @@ fn run_adaptive_mcmc_chain(
     let total_samples = n_samples + burn_in;
     let mut chain_samples = Vec::with_capacity(n_samples);
     let mut acceptance_count = 0;
-    let adaptation_start = burn_in / 4; // Start adapting after some initial burn-in
-    let adaptation_interval = 25; // Adapt every 25 iterations
+    let adaptation_start = 10.max(burn_in / 10); // Start adapting early but not immediately
+    let adaptation_interval = 10; // More frequent adaptation
     
     // MCMC iterations
     for i in 0..total_samples {
         // Propose new parameters using current covariance
-        let proposal_params = if i >= adaptation_start && adaptation_samples.len() > n_params {
-            // Use adaptive multivariate proposal
+        let proposal_params = if i >= adaptation_start && adaptation_samples.len() >= n_params * 2 {
+            // Use adaptive multivariate proposal once we have enough samples
             propose_parameters_adaptive(&current_params, &proposal_cov, &param_bounds, &mut rng)?
         } else {
-            // Use simple univariate proposals during initial burn-in
+            // Use simple univariate proposals during initial phase
             propose_parameters_simple(&current_params, &param_bounds, &mut rng)?
         };
         
@@ -508,12 +508,17 @@ fn run_adaptive_mcmc_chain(
             }
         }
         
-        // Store sample for adaptation during burn-in
-        if i >= adaptation_start && i < burn_in {
+        // Store sample for adaptation during burn-in and early post-burn-in
+        if i >= adaptation_start && i < burn_in + (n_samples / 4) {
             adaptation_samples.push(current_params.clone());
             
-            // Update adaptive covariance every adaptation_interval iterations
+            // Update adaptive covariance more frequently and keep a rolling window
             if adaptation_samples.len() >= adaptation_interval && adaptation_samples.len() % adaptation_interval == 0 {
+                // Keep only recent samples for adaptation (rolling window)
+                let window_size = (n_params * 20).max(100).min(500);
+                if adaptation_samples.len() > window_size {
+                    adaptation_samples.drain(0..adaptation_samples.len() - window_size);
+                }
                 update_adaptive_covariance(&adaptation_samples, &mut proposal_cov, &mut sample_mean, &mut sample_cov)?;
             }
         }
@@ -576,8 +581,11 @@ fn get_parameter_bounds(p: usize, q: usize) -> Vec<(f64, f64)> {
         }
     }
     
-    // Sigma bound (positive, with reasonable range for typical data)
-    bounds.push((1e-6, 50.0));
+    // IMPORTANT: Sigma bound is for LOG(sigma) since parameter vector stores ln(sigma)
+    // If sigma should be in range (1e-6, 50.0), then log(sigma) should be in range:
+    let log_sigma_min = (1e-6_f64).ln(); // ≈ -13.8
+    let log_sigma_max = (50.0_f64).ln();  // ≈ 3.9
+    bounds.push((log_sigma_min, log_sigma_max));
     
     bounds
 }
@@ -648,10 +656,17 @@ fn propose_parameters_adaptive(
         Some(c) => c,
         None => {
             // Fallback to regularized version if not positive definite
-            let regularized = covariance + 1e-6 * DMatrix::identity(n_params, n_params);
-            Cholesky::new(regularized).ok_or_else(|| {
-                CarmaError::InvalidParameters("Cannot decompose covariance matrix".to_string())
-            })?
+            let mut regularized = covariance.clone();
+            for i in 0..n_params {
+                regularized[(i, i)] += 1e-4; // Stronger regularization
+            }
+            Cholesky::new(regularized).unwrap_or_else(|| {
+                // Final fallback to diagonal if still fails
+                let diag = DMatrix::from_diagonal(&DVector::from_vec(
+                    (0..n_params).map(|i| covariance[(i, i)].max(1e-4)).collect()
+                ));
+                Cholesky::new(diag).expect("Diagonal matrix should always decompose")
+            })
         }
     };
     
@@ -667,13 +682,32 @@ fn propose_parameters_adaptive(
     let proposal_vec = &current_vec + chol.l() * z;
     let mut proposal = proposal_vec.as_slice().to_vec();
     
-    // Apply parameter bounds with reflection
+    // Apply parameter bounds with reflection - improved version
     for (_i, (val, &(min_bound, max_bound))) in proposal.iter_mut().zip(bounds.iter()).enumerate() {
-        if *val < min_bound {
-            *val = min_bound + (min_bound - *val).min(max_bound - min_bound);
-        } else if *val > max_bound {
-            *val = max_bound - (*val - max_bound).min(max_bound - min_bound);
+        // Ensure bounds are valid
+        if max_bound <= min_bound {
+            continue;
         }
+        
+        let range = max_bound - min_bound;
+        
+        // Apply reflection if out of bounds
+        if *val < min_bound {
+            let excess = min_bound - *val;
+            *val = min_bound + (excess % (2.0 * range));
+            if *val > max_bound {
+                *val = 2.0 * max_bound - *val;
+            }
+        } else if *val > max_bound {
+            let excess = *val - max_bound;
+            *val = max_bound - (excess % (2.0 * range));
+            if *val < min_bound {
+                *val = 2.0 * min_bound - *val;
+            }
+        }
+        
+        // Final safety clamp
+        *val = val.max(min_bound).min(max_bound);
     }
     
     Ok(proposal)
@@ -690,7 +724,10 @@ fn propose_parameters_simple(
     for (_i, (&curr_val, &(min_bound, max_bound))) in current.iter().zip(bounds.iter()).enumerate() {
         // Adaptive scaling based on parameter magnitude and bounds
         let range = max_bound - min_bound;
-        let scale = (curr_val.abs() * 0.05).max(range * 0.01).min(range * 0.1);
+        let param_scale = curr_val.abs().max(0.1);
+        
+        // Use smaller initial proposals for better initial exploration
+        let scale = (param_scale * 0.02).max(range * 0.005).min(range * 0.05);
         
         let normal = Normal::new(curr_val, scale)
             .map_err(|e| CarmaError::InvalidParameters(format!("Invalid normal distribution: {}", e)))?;
@@ -699,10 +736,15 @@ fn propose_parameters_simple(
         
         // Apply bounds with reflection
         if new_val < min_bound {
-            new_val = min_bound + (min_bound - new_val).min(max_bound - min_bound);
+            let excess = min_bound - new_val;
+            new_val = min_bound + excess.min(max_bound - min_bound);
         } else if new_val > max_bound {
-            new_val = max_bound - (new_val - max_bound).min(max_bound - min_bound);
+            let excess = new_val - max_bound;
+            new_val = max_bound - excess.min(max_bound - min_bound);
         }
+        
+        // Final safety clamp
+        new_val = new_val.max(min_bound).min(max_bound);
         
         proposal.push(new_val);
     }
