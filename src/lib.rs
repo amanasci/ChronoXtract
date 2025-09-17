@@ -222,25 +222,22 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(shape::turning_points, m)?)?;
     m.add_function(wrap_pyfunction!(shape::energy_distribution, m)?)?;
 
-    // CARMA functions
-    m.add_function(wrap_pyfunction!(carma::carma_model::carma_model, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::carma_model::set_carma_parameters, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::estimation::carma_mle, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::estimation::carma_method_of_moments, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::estimation::carma_mcmc, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::simulation::simulate_carma, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::simulation::generate_irregular_carma, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::analysis::carma_psd, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::analysis::carma_covariance, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::analysis::carma_loglikelihood, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::analysis::carma_residuals, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::kalman::carma_predict, m)?)?;
+    // CARMA functions - High-performance implementation
     m.add_function(wrap_pyfunction!(carma::kalman::carma_kalman_filter, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::selection::carma_information_criteria, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::selection::carma_cross_validation, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::utils::check_carma_stability, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::utils::carma_to_state_space, m)?)?;
-    m.add_function(wrap_pyfunction!(carma::utils::carma_characteristic_roots, m)?)?;
+    m.add_function(wrap_pyfunction!(carma::kalman::carma_loglikelihood, m)?)?;
+    m.add_function(wrap_pyfunction!(carma::mle::carma_mle, m)?)?;
+    m.add_function(wrap_pyfunction!(carma::mcmc::carma_mcmc, m)?)?;
+    m.add_function(wrap_pyfunction!(carma::selection::carma_choose_order, m)?)?;
+    m.add_function(wrap_pyfunction!(carma::predict::carma_predict, m)?)?;
+    
+    // CARMA types
+    m.add_class::<carma::types::CarmaParams>()?;
+    m.add_class::<carma::types::McmcParams>()?;
+    m.add_class::<carma::types::CarmaMLEResult>()?;
+    m.add_class::<carma::types::CarmaMCMCResult>()?;
+    m.add_class::<carma::types::CarmaOrderResult>()?;
+    m.add_class::<carma::types::CarmaPrediction>()?;
+    m.add_class::<carma::kalman::KalmanResult>()?;
 
     Ok(())
 }
