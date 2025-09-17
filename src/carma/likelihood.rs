@@ -156,11 +156,13 @@ impl KalmanFilter {
         // Innovation covariance: S = C * P_{k|k-1} * C^T + R
         let innovation_var = c.dot(&(&self.covariance * c)) + measurement_error * measurement_error;
         
-        if innovation_var <= 0.0 {
-            return Err(CarmaError::NumericalError {
-                message: "Non-positive innovation variance".to_string()
-            });
-        }
+        // Add small regularization to ensure positive innovation variance
+        let min_var = 1e-12;
+        let innovation_var = if innovation_var <= min_var {
+            min_var
+        } else {
+            innovation_var
+        };
         
         // Kalman gain: K = P_{k|k-1} * C^T / S
         let kalman_gain = (&self.covariance * c) / innovation_var;

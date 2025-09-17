@@ -327,6 +327,12 @@ impl McmcResult {
             ))
         }
     }
+    
+    /// Get all samples as a 2D array
+    #[getter]
+    pub fn all_samples(&self) -> Vec<Vec<f64>> {
+        self.samples.clone()
+    }
 }
 
 /// Create a new CARMA model
