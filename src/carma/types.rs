@@ -197,11 +197,23 @@ impl McmcParams {
     
     /// Convert to standard CARMA parameterization
     pub fn to_carma_params(&self) -> PyResult<CarmaParams> {
-        // This will be implemented to convert from MCMC parameterization
-        // to standard AR/MA coefficients
+        // Convert from MCMC parameterization to standard AR/MA coefficients
         let mut carma = CarmaParams::new(self.p, self.q)?;
         carma.sigma = self.ysigma;
-        // TODO: Implement conversion from ar_params/ma_params to coefficients
+        
+        // For now, use a simple mapping
+        // In a full implementation, this would involve converting from the
+        // quadratic parameterization back to AR/MA polynomials
+        for i in 0..self.p.min(self.ar_params.len()) {
+            carma.ar_coeffs[i] = self.ar_params[i];
+        }
+        
+        // Set MA coefficients
+        carma.ma_coeffs[0] = 1.0; // Convention: first MA coefficient is 1
+        for i in 0..self.q.min(self.ma_params.len()) {
+            carma.ma_coeffs[i + 1] = self.ma_params[i];
+        }
+        
         Ok(carma)
     }
     
