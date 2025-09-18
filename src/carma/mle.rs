@@ -114,25 +114,64 @@ fn evaluate_params(
     Ok((params.clone(), loglik))
 }
 
-/// Generate a random starting point for optimization
+/// Generate a random starting point for optimization with stationarity constraints
 fn generate_random_starting_point(p: usize, q: usize, seed: u64) -> CarmaParams {
     let mut rng = StdRng::seed_from_u64(seed);
     let normal = Normal::new(0.0, 1.0).unwrap();
     
     let mut params = CarmaParams::new(p, q).unwrap();
     
-    // Generate random AR coefficients (ensuring rough stationarity)
-    for i in 0..p {
-        params.ar_coeffs[i] = rng.sample(normal) * 0.3; // Smaller range for stability
+    // Generate stationary AR coefficients by ensuring roots have negative real parts
+    // Use a simpler approach: generate smaller coefficients and validate
+    let max_attempts = 20;
+    let mut attempts = 0;
+    
+    loop {
+        // Generate random AR coefficients with decreasing magnitude for higher orders
+        for i in 0..p {
+            let scale = 0.8 / (i + 1) as f64; // Decreasing scale for stability
+            params.ar_coeffs[i] = rng.sample(normal) * scale;
+        }
+        
+        // Quick stationarity check - for simple AR(1), just ensure |a| < 1
+        if p == 1 {
+            if params.ar_coeffs[0].abs() < 0.9 {
+                break;
+            }
+        } else {
+            // For higher orders, use a simple heuristic: sum of absolute coefficients < 1
+            let sum_abs: f64 = params.ar_coeffs.iter().map(|x| x.abs()).sum();
+            if sum_abs < 0.8 {
+                break;
+            }
+        }
+        
+        attempts += 1;
+        if attempts >= max_attempts {
+            // Fallback to a known stable configuration
+            match p {
+                1 => params.ar_coeffs[0] = 0.5,
+                2 => {
+                    params.ar_coeffs[0] = 0.3;
+                    params.ar_coeffs[1] = 0.2;
+                }
+                _ => {
+                    for i in 0..p {
+                        params.ar_coeffs[i] = 0.1 / (i + 1) as f64;
+                    }
+                }
+            }
+            break;
+        }
     }
     
     // Generate random MA coefficients
     for i in 0..=q {
-        params.ma_coeffs[i] = if i == 0 { 1.0 } else { rng.sample(normal) * 0.3 };
+        params.ma_coeffs[i] = if i == 0 { 1.0 } else { rng.sample(normal) * 0.2 };
     }
     
-    // Random positive sigma
-    params.sigma = (rng.sample(normal).abs() + 0.1).max(0.01);
+    // Random positive sigma - ensure it's reasonable
+    params.sigma = (rng.sample(normal).abs() * 0.5 + 0.5).max(0.1).min(2.0);
     
     params
 }

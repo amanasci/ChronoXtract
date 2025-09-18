@@ -174,12 +174,20 @@ impl CarmaKalmanFilter {
         
         // Innovation covariance: S = H * P⁻ * Hᵀ + R
         let innovation_cov_matrix = h.transpose() * &self.state_covariance * h;
-        let innovation_variance = innovation_cov_matrix[(0, 0)] + measurement_error * measurement_error;
+        let predicted_variance = innovation_cov_matrix[(0, 0)];
+        let measurement_variance = measurement_error * measurement_error;
+        let mut innovation_variance = predicted_variance + measurement_variance;
         
-        if innovation_variance <= 0.0 {
-            return Err(CarmaError::NumericalError(
-                "Non-positive innovation variance".to_string()
-            ));
+        // Add more robust checks and fallbacks
+        if innovation_variance <= 1e-12 {
+            // If innovation variance is too small, add a small regularization
+            innovation_variance = innovation_variance + 1e-6;
+            if innovation_variance <= 0.0 {
+                return Err(CarmaError::NumericalError(
+                    format!("Non-positive innovation variance: predicted={:.2e}, measurement={:.2e}, total={:.2e}", 
+                           predicted_variance, measurement_variance, innovation_variance)
+                ));
+            }
         }
         
         // Kalman gain: K = P⁻ * Hᵀ * S⁻¹

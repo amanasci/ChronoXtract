@@ -56,9 +56,24 @@ pub fn compute_ar_roots(ar_coeffs: &[f64]) -> Result<Vec<Complex64>, CarmaError>
     let eigenvalues = companion.complex_eigenvalues();
     
     // Convert to Complex64
-    let roots: Vec<Complex64> = eigenvalues.iter()
+    let mut roots: Vec<Complex64> = eigenvalues.iter()
         .map(|&eig| Complex64::new(eig.re, eig.im))
         .collect();
+    
+    // Sort roots to ensure complex conjugates are adjacent
+    // This is important for the matrix exponential computation
+    roots.sort_by(|a, b| {
+        // First sort by real part (ascending)
+        match a.re.partial_cmp(&b.re) {
+            Some(std::cmp::Ordering::Equal) => {
+                // If real parts are equal, sort by imaginary part
+                // Positive imaginary part first
+                b.im.partial_cmp(&a.im).unwrap_or(std::cmp::Ordering::Equal)
+            }
+            Some(ordering) => ordering,
+            None => std::cmp::Ordering::Equal,
+        }
+    });
     
     Ok(roots)
 }
@@ -139,7 +154,22 @@ pub fn compute_process_noise_covariance(lambda: &[Complex64], sigma: f64) -> Res
         // Each mode gets noise based on its eigenvalue
         // More negative eigenvalues (faster decay) get more noise
         let lambda_real = lambda[i].re.abs();
+        
+        // Add numerical stability check
+        if lambda_real < 1e-8 {
+            return Err(CarmaError::NumericalError(
+                format!("Eigenvalue {} has nearly zero real part: {:.2e}", i, lambda_real)
+            ));
+        }
+        
         cov[(i, i)] = variance / (2.0 * lambda_real);
+        
+        // Sanity check on the resulting covariance
+        if !cov[(i, i)].is_finite() || cov[(i, i)] <= 0.0 {
+            return Err(CarmaError::NumericalError(
+                format!("Invalid process noise covariance: {:.2e}", cov[(i, i)])
+            ));
+        }
     }
     
     Ok(cov)
@@ -202,17 +232,48 @@ pub fn matrix_exponential_diagonal(lambda: &[Complex64], dt: f64) -> Result<DMat
     let p = lambda.len();
     let mut exp_matrix = DMatrix::zeros(p, p);
     
-    for i in 0..p {
-        let exp_val = (lambda[i] * dt).exp();
-        exp_matrix[(i, i)] = exp_val.re;
+    let mut i = 0;
+    while i < p {
+        let eigenval = lambda[i];
         
-        // For complex eigenvalues, we need to handle the imaginary part
-        // In a proper implementation, this would involve 2x2 blocks for
-        // complex conjugate pairs
-        if exp_val.im.abs() > 1e-12 {
-            return Err(CarmaError::NumericalError(
-                "Complex eigenvalues require special handling".to_string()
-            ));
+        if eigenval.im.abs() < 1e-12 {
+            // Real eigenvalue - simple case
+            let exp_val = (eigenval.re * dt).exp();
+            exp_matrix[(i, i)] = exp_val;
+            i += 1;
+        } else {
+            // Complex eigenvalue - should have conjugate pair
+            if i + 1 >= p {
+                return Err(CarmaError::NumericalError(
+                    "Complex eigenvalue without conjugate pair".to_string()
+                ));
+            }
+            
+            let eigenval_conj = lambda[i + 1];
+            
+            // Verify they are conjugates (approximately)
+            if (eigenval.re - eigenval_conj.re).abs() > 1e-10 || 
+               (eigenval.im + eigenval_conj.im).abs() > 1e-10 {
+                return Err(CarmaError::NumericalError(
+                    "Complex eigenvalues are not conjugate pairs".to_string()
+                ));
+            }
+            
+            // For conjugate pair α ± βi, the 2x2 block exponential is:
+            // exp(α*dt) * [cos(β*dt)  -sin(β*dt)]
+            //             [sin(β*dt)   cos(β*dt)]
+            let alpha = eigenval.re;
+            let beta = eigenval.im;
+            let exp_alpha = (alpha * dt).exp();
+            let cos_beta = (beta * dt).cos();
+            let sin_beta = (beta * dt).sin();
+            
+            exp_matrix[(i, i)] = exp_alpha * cos_beta;
+            exp_matrix[(i, i + 1)] = -exp_alpha * sin_beta;
+            exp_matrix[(i + 1, i)] = exp_alpha * sin_beta;
+            exp_matrix[(i + 1, i + 1)] = exp_alpha * cos_beta;
+            
+            i += 2; // Skip both eigenvalues in the conjugate pair
         }
     }
     
