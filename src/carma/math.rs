@@ -48,6 +48,8 @@ pub fn compute_ar_roots(ar_coeffs: &[f64]) -> Result<Vec<Complex64>, CarmaError>
     }
     
     // Fill the last row with negative AR coefficients (reversed order)
+    // For polynomial s^p + α₁s^(p-1) + ... + αₚ = 0
+    // Companion matrix last row should be [-αₚ, -αₚ₋₁, ..., -α₁]
     for j in 0..p {
         companion[(p-1, j)] = -ar_coeffs[p-1-j];
     }
@@ -192,6 +194,16 @@ pub fn compute_stationary_covariance(
 ) -> Result<DMatrix<f64>, CarmaError> {
     let p = lambda.len();
     
+    // Verify all eigenvalues have negative real parts (stability condition)
+    for (i, &eigenval) in lambda.iter().enumerate() {
+        if eigenval.re >= -1e-8 {  // Allow small numerical errors
+            return Err(CarmaError::NumericalError(
+                format!("Eigenvalue {} has non-negative real part: {:.2e} + {:.2e}i", 
+                       i, eigenval.re, eigenval.im)
+            ));
+        }
+    }
+    
     // For a diagonal system with eigenvalues λᵢ, the Lyapunov equation
     // A*X + X*A' + Q = 0 has a simple solution when A is diagonal
     let mut stationary_cov = DMatrix::zeros(p, p);
@@ -210,7 +222,18 @@ pub fn compute_stationary_covariance(
                 ));
             }
             
-            stationary_cov[(i, j)] = -process_noise_cov[(i, j)] / denominator.re;
+            // For stable systems, λᵢ + λⱼ* should have negative real part
+            // The stationary covariance should be positive definite
+            let complex_result = -Complex64::new(process_noise_cov[(i, j)], 0.0) / denominator;
+            stationary_cov[(i, j)] = complex_result.re;
+            
+            // Sanity check - diagonal elements should be positive
+            if i == j && stationary_cov[(i, j)] <= 0.0 {
+                return Err(CarmaError::NumericalError(
+                    format!("Non-positive diagonal element in stationary covariance: [{},{}] = {:.2e}", 
+                           i, j, stationary_cov[(i, j)])
+                ));
+            }
         }
     }
     
