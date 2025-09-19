@@ -63,18 +63,57 @@ pub fn compute_ar_roots(ar_coeffs: &[f64]) -> Result<Vec<Complex64>, CarmaError>
     Ok(roots)
 }
 
+/// Compute the input vector for the rotated state-space representation
+/// 
+/// The input vector J satisfies the equation: EigenMat * J = R
+/// where EigenMat is the Vandermonde matrix of AR roots and R = [0, 0, ..., 0, 1]
+/// 
+/// # Arguments
+/// * `lambda` - AR roots (eigenvalues)
+/// 
+/// # Returns
+/// Input vector that maps white noise to state variables in rotated basis
+pub fn compute_input_vector(lambda: &[Complex64]) -> Result<DVector<Complex64>, CarmaError> {
+    let p = lambda.len();
+    
+    if p == 0 {
+        return Err(CarmaError::InvalidParameters("Empty lambda vector".to_string()));
+    }
+    
+    // Construct Vandermonde matrix: V[i,j] = lambda[i]^j
+    let mut vander_matrix = DMatrix::zeros(p, p);
+    for i in 0..p {
+        for j in 0..p {
+            vander_matrix[(i, j)] = lambda[i].powf(j as f64);
+        }
+    }
+    
+    // Right-hand side vector: [0, 0, ..., 0, 1]
+    let mut rhs = DVector::zeros(p);
+    rhs[p - 1] = Complex64::new(1.0, 0.0);
+    
+    // Solve Vandermonde * J = rhs
+    let decomp = vander_matrix.lu();
+    let input_vector = decomp.solve(&rhs).ok_or_else(|| {
+        CarmaError::LinearAlgebraError("Failed to solve for input vector".to_string())
+    })?;
+    
+    Ok(input_vector)
+}
+
 /// Compute the observation vector for state-space representation
 /// 
 /// In the rotated state-space representation, the observation vector
-/// relates the MA polynomial coefficients to the state variables.
+/// C = β * EigenMat where β is the MA coefficient vector and EigenMat
+/// is the Vandermonde matrix of AR roots.
 /// 
 /// # Arguments
 /// * `ma_coeffs` - MA coefficients [β₀, β₁, ..., βₑ]
 /// * `lambda` - AR roots (eigenvalues)
 /// 
 /// # Returns
-/// Observation vector that transforms state to observable output
-pub fn compute_observation_vector(ma_coeffs: &[f64], lambda: &[Complex64]) -> Result<DVector<f64>, CarmaError> {
+/// Observation vector that transforms state to observable output in rotated basis
+pub fn compute_observation_vector(ma_coeffs: &[f64], lambda: &[Complex64]) -> Result<DVector<Complex64>, CarmaError> {
     let p = lambda.len();
     let q = ma_coeffs.len().saturating_sub(1);
     
@@ -82,64 +121,105 @@ pub fn compute_observation_vector(ma_coeffs: &[f64], lambda: &[Complex64]) -> Re
         return Err(CarmaError::InvalidParameters("Empty MA coefficients".to_string()));
     }
     
-    // For the rotated state-space representation, we need to solve for
-    // the observation vector C such that the MA polynomial is satisfied
-    // This involves evaluating the MA polynomial at the AR roots
-    
-    let mut observation = DVector::zeros(p);
-    
-    for i in 0..p {
-        let mut ma_value = Complex64::new(0.0, 0.0);
-        let root = lambda[i];
-        
-        // Evaluate MA polynomial: β₀ + β₁s + β₂s² + ... + βₑsᵃ
-        for (k, &coeff) in ma_coeffs.iter().enumerate() {
-            if k <= q {
-                let power = root.powf(k as f64);
-                ma_value += Complex64::new(coeff, 0.0) * power;
-            }
-        }
-        
-        // For real-valued observation, take the real part
-        // This assumes the implementation handles complex conjugate pairs properly
-        observation[i] = ma_value.re;
+    if p == 0 {
+        return Err(CarmaError::InvalidParameters("Empty lambda vector".to_string()));
     }
     
-    Ok(observation)
+    // Construct Vandermonde matrix: V[i,j] = lambda[i]^j
+    let mut vander_matrix = DMatrix::zeros(p, p);
+    for i in 0..p {
+        for j in 0..p {
+            vander_matrix[(i, j)] = lambda[i].powf(j as f64);
+        }
+    }
+    
+    // MA coefficient vector, extended with zeros if necessary
+    let mut beta_vec = DVector::zeros(p);
+    for i in 0..=(q.min(p - 1)) {
+        beta_vec[i] = Complex64::new(ma_coeffs[i], 0.0);
+    }
+    
+    // Observation vector: C = β * EigenMat
+    let observation = beta_vec.transpose() * vander_matrix;
+    
+    Ok(observation.transpose())
 }
 
-/// Compute process noise covariance matrix
+/// Compute matrix exponential for state transition
 /// 
-/// In the rotated coordinate system, this matrix describes how
-/// white noise drives the state variables.
+/// For a diagonal matrix with eigenvalues λ, the matrix exponential
+/// is diag(exp(λᵢ * dt)). This properly handles complex eigenvalues
+/// by computing the full complex exponential.
+/// 
+/// # Arguments
+/// * `lambda` - Diagonal matrix eigenvalues
+/// * `dt` - Time step
+/// 
+/// # Returns
+/// Matrix exponential exp(Λ * dt) where Λ = diag(λ)
+pub fn matrix_exponential_diagonal(lambda: &[Complex64], dt: f64) -> Result<DMatrix<Complex64>, CarmaError> {
+    let p = lambda.len();
+    let mut exp_matrix = DMatrix::zeros(p, p);
+    
+    for i in 0..p {
+        let exp_val = (lambda[i] * dt).exp();
+        exp_matrix[(i, i)] = exp_val;
+    }
+    
+    Ok(exp_matrix)
+}
+
+/// Compute process noise covariance matrix integrated over time step dt
+/// 
+/// For the rotated state-space representation, the integrated process
+/// noise covariance has elements:
+/// Q[i,j] = -σ² * J_i * J_j* * (exp((λᵢ + λⱼ*) * dt) - 1) / (λᵢ + λⱼ*)
 /// 
 /// # Arguments
 /// * `lambda` - AR roots (diagonal elements of transition matrix)
+/// * `input_vector` - Input vector J for white noise driving
 /// * `sigma` - Process noise standard deviation
+/// * `dt` - Time step
 /// 
 /// # Returns
-/// Process noise covariance matrix in rotated coordinates
-pub fn compute_process_noise_covariance(lambda: &[Complex64], sigma: f64) -> Result<DMatrix<f64>, CarmaError> {
+/// Process noise covariance matrix integrated over time step dt
+pub fn compute_process_noise_covariance_dt(
+    lambda: &[Complex64], 
+    input_vector: &DVector<Complex64>,
+    sigma: f64, 
+    dt: f64
+) -> Result<DMatrix<Complex64>, CarmaError> {
     let p = lambda.len();
     
     if sigma <= 0.0 {
         return Err(CarmaError::InvalidParameters("sigma must be positive".to_string()));
     }
     
-    // In the rotated representation, the process noise covariance
-    // is related to how the driving white noise affects each mode
-    let mut cov = DMatrix::zeros(p, p);
+    if input_vector.len() != p {
+        return Err(CarmaError::InvalidParameters("Input vector size mismatch".to_string()));
+    }
     
-    // Simplified implementation - assumes diagonal structure
-    // In the full implementation, this would involve more complex
-    // relationships between the modes
-    let variance = sigma * sigma;
+    let mut cov = DMatrix::zeros(p, p);
+    let sigma_squared = sigma * sigma;
     
     for i in 0..p {
-        // Each mode gets noise based on its eigenvalue
-        // More negative eigenvalues (faster decay) get more noise
-        let lambda_real = lambda[i].re.abs();
-        cov[(i, i)] = variance / (2.0 * lambda_real);
+        for j in 0..p {
+            let lambda_i = lambda[i];
+            let lambda_j = lambda[j];
+            let j_i = input_vector[i];
+            let j_j_conj = input_vector[j].conj();
+            
+            // Q[i,j] = -σ² * J_i * J_j* * (exp((λᵢ + λⱼ*) * dt) - 1) / (λᵢ + λⱼ*)
+            let sum_lambda = lambda_i + lambda_j.conj();
+            
+            if sum_lambda.norm() < 1e-12 {
+                // For nearly zero eigenvalue sum, use limiting case: Q[i,j] = σ² * J_i * J_j* * dt
+                cov[(i, j)] = sigma_squared * j_i * j_j_conj * dt;
+            } else {
+                let exp_term = (sum_lambda * dt).exp() - Complex64::new(1.0, 0.0);
+                cov[(i, j)] = -sigma_squared * j_i * j_j_conj * exp_term / sum_lambda;
+            }
+        }
     }
     
     Ok(cov)
@@ -148,30 +228,42 @@ pub fn compute_process_noise_covariance(lambda: &[Complex64], sigma: f64) -> Res
 /// Compute stationary covariance matrix
 /// 
 /// Solves the continuous-time Lyapunov equation to find the
-/// steady-state covariance of the state vector.
+/// steady-state covariance of the state vector using the correct formula:
+/// P_inf[i,j] = -σ² * J_i * J_j_conj / (λ_i + λ_j_conj)
 /// 
 /// # Arguments
 /// * `lambda` - AR roots (diagonal transition matrix eigenvalues)
-/// * `process_noise_cov` - Process noise covariance matrix
+/// * `input_vector` - Input vector J for white noise driving
+/// * `sigma` - Process noise standard deviation
 /// 
 /// # Returns
-/// Stationary state covariance matrix
+/// Stationary state covariance matrix in rotated coordinates
 pub fn compute_stationary_covariance(
     lambda: &[Complex64], 
-    process_noise_cov: &DMatrix<f64>
-) -> Result<DMatrix<f64>, CarmaError> {
+    input_vector: &DVector<Complex64>,
+    sigma: f64
+) -> Result<DMatrix<Complex64>, CarmaError> {
     let p = lambda.len();
     
-    // For a diagonal system with eigenvalues λᵢ, the Lyapunov equation
-    // A*X + X*A' + Q = 0 has a simple solution when A is diagonal
+    if sigma <= 0.0 {
+        return Err(CarmaError::InvalidParameters("sigma must be positive".to_string()));
+    }
+    
+    if input_vector.len() != p {
+        return Err(CarmaError::InvalidParameters("Input vector size mismatch".to_string()));
+    }
+    
     let mut stationary_cov = DMatrix::zeros(p, p);
+    let sigma_squared = sigma * sigma;
     
     for i in 0..p {
         for j in 0..p {
             let lambda_i = lambda[i];
             let lambda_j = lambda[j];
+            let j_i = input_vector[i];
+            let j_j_conj = input_vector[j].conj();
             
-            // Lyapunov equation solution: X[i,j] = -Q[i,j] / (λᵢ + λⱼ*)
+            // Lyapunov equation solution: P[i,j] = -σ² * J_i * J_j* / (λᵢ + λⱼ*)
             let denominator = lambda_i + lambda_j.conj();
             
             if denominator.norm() < 1e-12 {
@@ -180,43 +272,11 @@ pub fn compute_stationary_covariance(
                 ));
             }
             
-            stationary_cov[(i, j)] = -process_noise_cov[(i, j)] / denominator.re;
+            stationary_cov[(i, j)] = -sigma_squared * j_i * j_j_conj / denominator;
         }
     }
     
     Ok(stationary_cov)
-}
-
-/// Compute matrix exponential for state transition
-/// 
-/// For a diagonal matrix with eigenvalues λ, the matrix exponential
-/// is simply diag(exp(λᵢ * dt)).
-/// 
-/// # Arguments
-/// * `lambda` - Diagonal matrix eigenvalues
-/// * `dt` - Time step
-/// 
-/// # Returns
-/// Matrix exponential exp(Λ * dt) where Λ = diag(λ)
-pub fn matrix_exponential_diagonal(lambda: &[Complex64], dt: f64) -> Result<DMatrix<f64>, CarmaError> {
-    let p = lambda.len();
-    let mut exp_matrix = DMatrix::zeros(p, p);
-    
-    for i in 0..p {
-        let exp_val = (lambda[i] * dt).exp();
-        exp_matrix[(i, i)] = exp_val.re;
-        
-        // For complex eigenvalues, we need to handle the imaginary part
-        // In a proper implementation, this would involve 2x2 blocks for
-        // complex conjugate pairs
-        if exp_val.im.abs() > 1e-12 {
-            return Err(CarmaError::NumericalError(
-                "Complex eigenvalues require special handling".to_string()
-            ));
-        }
-    }
-    
-    Ok(exp_matrix)
 }
 
 /// Compute Power Spectral Density (PSD) of CARMA model
@@ -426,9 +486,13 @@ mod tests {
         
         let exp_matrix = matrix_exponential_diagonal(&lambda, dt).unwrap();
         
-        assert_relative_eq!(exp_matrix[(0, 0)], (-1.0_f64).exp(), epsilon = 1e-10);
-        assert_relative_eq!(exp_matrix[(1, 1)], (-2.0_f64).exp(), epsilon = 1e-10);
-        assert_relative_eq!(exp_matrix[(0, 1)], 0.0, epsilon = 1e-10);
-        assert_relative_eq!(exp_matrix[(1, 0)], 0.0, epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(0, 0)].re, (-1.0_f64).exp(), epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(1, 1)].re, (-2.0_f64).exp(), epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(0, 1)].norm(), 0.0, epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(1, 0)].norm(), 0.0, epsilon = 1e-10);
+        
+        // Check that imaginary parts are zero for real eigenvalues
+        assert_relative_eq!(exp_matrix[(0, 0)].im, 0.0, epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(1, 1)].im, 0.0, epsilon = 1e-10);
     }
 }
