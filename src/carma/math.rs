@@ -495,4 +495,69 @@ mod tests {
         assert_relative_eq!(exp_matrix[(0, 0)].im, 0.0, epsilon = 1e-10);
         assert_relative_eq!(exp_matrix[(1, 1)].im, 0.0, epsilon = 1e-10);
     }
+    
+    #[test]
+    fn test_matrix_exponential_complex_eigenvalues() {
+        // Test with complex conjugate pair (oscillatory behavior)
+        let lambda = vec![
+            Complex64::new(-0.5, 2.0),  // -0.5 + 2i
+            Complex64::new(-0.5, -2.0), // -0.5 - 2i (conjugate)
+        ];
+        let dt = 0.1;
+        
+        let exp_matrix = matrix_exponential_diagonal(&lambda, dt).unwrap();
+        
+        // For λ = -0.5 + 2i, exp(λ*dt) = exp((-0.5 + 2i)*0.1) = exp(-0.05 + 0.2i)
+        let expected_1 = (lambda[0] * dt).exp();
+        let expected_2 = (lambda[1] * dt).exp();
+        
+        assert_relative_eq!(exp_matrix[(0, 0)].re, expected_1.re, epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(0, 0)].im, expected_1.im, epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(1, 1)].re, expected_2.re, epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(1, 1)].im, expected_2.im, epsilon = 1e-10);
+        
+        // Off-diagonal elements should be zero
+        assert_relative_eq!(exp_matrix[(0, 1)].norm(), 0.0, epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(1, 0)].norm(), 0.0, epsilon = 1e-10);
+        
+        // Verify that the conjugate pair property is preserved
+        assert_relative_eq!(exp_matrix[(0, 0)].re, exp_matrix[(1, 1)].re, epsilon = 1e-10);
+        assert_relative_eq!(exp_matrix[(0, 0)].im, -exp_matrix[(1, 1)].im, epsilon = 1e-10);
+    }
+    
+    #[test]
+    fn test_state_space_model_complex_roots() {
+        use crate::carma::types::{CarmaParams, StateSpaceModel};
+        
+        // Test CARMA(2,1) model that produces complex roots
+        let mut params = CarmaParams::new(2, 1).unwrap();
+        
+        // AR coefficients that produce complex conjugate roots
+        // For polynomial s^2 + 1.0*s + 2.0 = 0
+        // Roots are (-1 ± i√7)/2 ≈ -0.5 ± 1.32i
+        params.ar_coeffs = vec![1.0, 2.0];
+        params.ma_coeffs = vec![1.0, 0.5];
+        params.sigma = 1.0;
+        
+        // This should not panic or return an error with complex roots
+        let state_space = StateSpaceModel::new(&params).unwrap();
+        
+        // Verify we have complex roots
+        assert_eq!(state_space.lambda.len(), 2);
+        
+        // Check that the roots have negative real parts (stationarity)
+        for &root in &state_space.lambda {
+            assert!(root.re < 0.0, "Root has non-negative real part: {}", root);
+        }
+        
+        // Verify the state space components have correct dimensions
+        assert_eq!(state_space.observation.len(), 2);
+        assert_eq!(state_space.input_vector.len(), 2);
+        assert_eq!(state_space.stationary_cov.nrows(), 2);
+        assert_eq!(state_space.stationary_cov.ncols(), 2);
+        
+        println!("Complex AR roots: {:?}", state_space.lambda);
+        println!("Input vector: {:?}", state_space.input_vector);
+        println!("Observation vector: {:?}", state_space.observation);
+    }
 }
