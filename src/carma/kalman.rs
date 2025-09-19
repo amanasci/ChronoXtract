@@ -5,7 +5,7 @@
 //! state-space representation for optimal performance.
 
 use crate::carma::types::{CarmaError, CarmaParams, StateSpaceModel};
-use crate::carma::math::{validate_time_series, matrix_exponential_diagonal};
+use crate::carma::math::{validate_time_series, matrix_exponential_diagonal, compute_process_noise_covariance_dt};
 use nalgebra::{DMatrix, DVector};
 use num_complex::Complex64;
 use pyo3::prelude::*;
@@ -47,16 +47,16 @@ pub struct KalmanResult {
 /// 
 /// The implementation uses the rotated state-space representation where
 /// the transition matrix is diagonal, leading to significant computational
-/// savings.
+/// savings. The state vector is complex-valued in the rotated basis.
 pub struct CarmaKalmanFilter {
     /// State-space model representation
     state_space: StateSpaceModel,
     
-    /// Current state mean
-    state_mean: DVector<f64>,
+    /// Current state mean (complex in rotated basis)
+    state_mean: DVector<Complex64>,
     
-    /// Current state covariance
-    state_covariance: DMatrix<f64>,
+    /// Current state covariance (complex in rotated basis)
+    state_covariance: DMatrix<Complex64>,
     
     /// Previous time point (for computing time differences)
     previous_time: Option<f64>,
@@ -74,7 +74,7 @@ impl CarmaKalmanFilter {
         let state_space = StateSpaceModel::new(params)?;
         let state_dim = state_space.state_dim;
         
-        // Initialize with stationary distribution
+        // Initialize with stationary distribution (complex state)
         let state_mean = DVector::zeros(state_dim);
         let state_covariance = state_space.stationary_cov.clone();
         
@@ -138,14 +138,27 @@ impl CarmaKalmanFilter {
         // Compute state transition matrix: Φ = exp(Λ * dt)
         let transition_matrix = matrix_exponential_diagonal(&self.state_space.lambda, dt)?;
         
-        // Predict state mean: x⁻ = Φ * x⁺
-        self.state_mean = &transition_matrix * &self.state_mean;
+        // Predict state mean: x⁻ = Φ * x⁺ (element-wise for diagonal matrix)
+        for i in 0..self.state_space.state_dim {
+            self.state_mean[i] *= transition_matrix[(i, i)];
+        }
         
-        // Predict state covariance: P⁻ = Φ * P⁺ * Φᵀ + Q(dt)
-        let predicted_cov = &transition_matrix * &self.state_covariance * transition_matrix.transpose();
+        // Predict state covariance: P⁻ = Φ * P⁺ * Φᴴ + Q(dt)
+        let mut predicted_cov = DMatrix::zeros(self.state_space.state_dim, self.state_space.state_dim);
+        for i in 0..self.state_space.state_dim {
+            for j in 0..self.state_space.state_dim {
+                predicted_cov[(i, j)] = transition_matrix[(i, i)] * self.state_covariance[(i, j)] * transition_matrix[(j, j)].conj();
+            }
+        }
         
         // Add process noise covariance (computed for this time step)
-        let process_noise_cov = self.compute_process_noise_covariance(dt)?;
+        let process_noise_cov = compute_process_noise_covariance_dt(
+            &self.state_space.lambda, 
+            &self.state_space.input_vector,
+            1.0, // sigma will be handled in the likelihood computation
+            dt
+        )?;
+        
         self.state_covariance = predicted_cov + process_noise_cov;
         
         Ok(())
@@ -154,7 +167,7 @@ impl CarmaKalmanFilter {
     /// Measurement update step: incorporate new observation
     /// 
     /// # Arguments
-    /// * `observation` - Observed value
+    /// * `observation` - Observed value (real)
     /// * `measurement_error` - Measurement error standard deviation
     /// 
     /// # Returns
@@ -166,15 +179,30 @@ impl CarmaKalmanFilter {
     ) -> Result<(f64, f64, f64, f64), CarmaError> {
         let h = &self.state_space.observation;
         
-        // Predicted observation: ŷ = H * x⁻
-        let predicted_obs = h.dot(&self.state_mean);
+        // Predicted observation: ŷ = H * x⁻ (should be real for proper CARMA model)
+        let predicted_obs_complex = h.dot(&self.state_mean);
+        let predicted_obs = predicted_obs_complex.re; // Take real part
         
-        // Innovation: ν = y - ŷ
+        // Check that imaginary part is negligible
+        if predicted_obs_complex.im.abs() > 1e-10 {
+            return Err(CarmaError::NumericalError(
+                "Predicted observation has significant imaginary part".to_string()
+            ));
+        }
+        
+        // Innovation: ν = y - ŷ (real-valued)
         let innovation = observation - predicted_obs;
         
-        // Innovation covariance: S = H * P⁻ * Hᵀ + R
-        let innovation_cov_matrix = h.transpose() * &self.state_covariance * h;
-        let innovation_variance = innovation_cov_matrix[(0, 0)] + measurement_error * measurement_error;
+        // Innovation covariance: S = H * P⁻ * Hᴴ + R (should be real)
+        let innovation_cov_complex = h.adjoint() * &self.state_covariance * h;
+        let innovation_variance = innovation_cov_complex[(0, 0)].re + measurement_error * measurement_error;
+        
+        // Check that innovation covariance is real and positive
+        if innovation_cov_complex[(0, 0)].im.abs() > 1e-10 {
+            return Err(CarmaError::NumericalError(
+                "Innovation covariance has significant imaginary part".to_string()
+            ));
+        }
         
         if innovation_variance <= 0.0 {
             return Err(CarmaError::NumericalError(
@@ -182,15 +210,16 @@ impl CarmaKalmanFilter {
             ));
         }
         
-        // Kalman gain: K = P⁻ * Hᵀ * S⁻¹
-        let kalman_gain = &self.state_covariance * h / innovation_variance;
+        // Kalman gain: K = P⁻ * Hᴴ * S⁻¹
+        let kalman_gain = (&self.state_covariance * h.adjoint()) * Complex64::new(1.0 / innovation_variance, 0.0);
         
         // Update state mean: x⁺ = x⁻ + K * ν
-        self.state_mean += &kalman_gain * innovation;
+        self.state_mean += &kalman_gain * Complex64::new(innovation, 0.0);
         
-        // Update state covariance: P⁺ = P⁻ - K * H * P⁻
+        // Update state covariance: P⁺ = (I - K * H) * P⁻
         let identity = DMatrix::identity(self.state_space.state_dim, self.state_space.state_dim);
-        let update_matrix = &identity - &kalman_gain * h.transpose();
+        let kh = &kalman_gain * h.transpose();
+        let update_matrix = &identity - &kh;
         self.state_covariance = &update_matrix * &self.state_covariance;
         
         // Compute log-likelihood contribution
@@ -201,47 +230,6 @@ impl CarmaKalmanFilter {
         );
         
         Ok((predicted_obs, innovation, innovation_variance, loglik_contrib))
-    }
-    
-    /// Compute process noise covariance for a given time step
-    /// 
-    /// For the rotated representation, this involves integrating the
-    /// continuous-time noise over the time interval.
-    /// 
-    /// # Arguments
-    /// * `dt` - Time step
-    /// 
-    /// # Returns
-    /// Process noise covariance matrix for this time step
-    fn compute_process_noise_covariance(&self, dt: f64) -> Result<DMatrix<f64>, CarmaError> {
-        let p = self.state_space.state_dim;
-        let mut q_matrix = DMatrix::zeros(p, p);
-        
-        // For diagonal system with eigenvalues λᵢ, the integrated
-        // process noise covariance has elements:
-        // Q[i,j] = σ² * (1 - exp((λᵢ + λⱼ*) * dt)) / (λᵢ + λⱼ*)
-        
-        for i in 0..p {
-            for j in 0..p {
-                let lambda_i = self.state_space.lambda[i];
-                let lambda_j = self.state_space.lambda[j];
-                let sum_lambda = lambda_i + lambda_j.conj();
-                
-                if sum_lambda.norm() < 1e-12 {
-                    // Limit case for λᵢ + λⱼ* ≈ 0
-                    q_matrix[(i, j)] = dt;
-                } else {
-                    let exp_term = (sum_lambda * dt).exp();
-                    let integrand = (Complex64::new(1.0, 0.0) - exp_term) / sum_lambda;
-                    q_matrix[(i, j)] = integrand.re;
-                }
-            }
-        }
-        
-        // Scale by the base process noise covariance
-        let result = &self.state_space.process_noise_cov * &q_matrix;
-        
-        Ok(result)
     }
 }
 
@@ -294,15 +282,15 @@ pub fn run_kalman_filter(
         innovations.push(innovation);
         innovation_variances.push(innov_var);
         
-        // Store filtered state
+        // Store filtered state (real parts only for output)
         for j in 0..p {
-            filtered_means.push(filter.state_mean[j]);
+            filtered_means.push(filter.state_mean[j].re);
         }
         
-        // Store filtered covariance (flattened)
+        // Store filtered covariance (flattened, real parts only)
         for j in 0..p {
             for k in 0..p {
-                filtered_covariances.push(filter.state_covariance[(j, k)]);
+                filtered_covariances.push(filter.state_covariance[(j, k)].re);
             }
         }
     }
