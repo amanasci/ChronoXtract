@@ -3,6 +3,20 @@ import numpy as np
 import chronoxtract as ct
 import pandas as pd
 from scipy import stats
+from scipy import signal
+
+def benchmark_lombscargle(data_size):
+    t = np.sort(np.random.uniform(0, 10, data_size))
+    y = np.sin(2 * np.pi * 0.5 * t) + 0.1 * np.random.randn(data_size)
+    freqs = np.linspace(0.1, 2, 100)
+
+    # ChronoXtract
+    ct_time = timeit.timeit(lambda: ct.lomb_scargle_py(t, y, freqs), number=10)
+
+    # Scipy
+    scipy_time = timeit.timeit(lambda: signal.lombscargle(t, y, freqs), number=10)
+
+    return ct_time, scipy_time
 
 def benchmark_summary(data_size):
     data = np.random.randn(data_size)
@@ -56,7 +70,7 @@ def benchmark_fft(data_size):
 def main():
     data_sizes = [100, 1000, 10_000, 100_000, 1_000_000, 5_000_000,10_000_000]
 
-    print("| Function          | Data Size | ChronoXtract (s) | Numpy/Pandas (s) | Speedup      |")
+    print("| Function          | Data Size | ChronoXtract (s) | Comparison (s)   | Speedup      |")
     print("|-------------------|-----------|------------------|------------------|--------------|")
 
     for size in data_sizes:
@@ -75,6 +89,10 @@ def main():
             ct_fft_time, np_fft_time = benchmark_fft(fft_size)
             speedup = np_fft_time / ct_fft_time if ct_fft_time > 0 else float('inf')
             print(f"| perform_fft_py      | {fft_size:<9} | {ct_fft_time:<16.6f} | {np_fft_time:<16.6f} | {speedup:<12.2f}x |")
+
+        ct_ls_time, scipy_ls_time = benchmark_lombscargle(size)
+        speedup = scipy_ls_time / ct_ls_time if ct_ls_time > 0 else float('inf')
+        print(f"| lomb_scargle_py     | {size:<9} | {ct_ls_time:<16.6f} | {scipy_ls_time:<16.6f} | {speedup:<12.2f}x |")
 
 if __name__ == "__main__":
     main()
