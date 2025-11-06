@@ -394,22 +394,23 @@ impl CarmaPrediction {
 /// 
 /// Represents the CARMA model in state-space form for Kalman filtering.
 /// Uses the "rotated" representation where the transition matrix is diagonal.
+/// The state vector is complex-valued in the rotated basis.
 #[derive(Clone, Debug)]
 pub struct StateSpaceModel {
     /// Diagonal transition matrix eigenvalues (AR roots)
     pub lambda: Vec<Complex64>,
     
-    /// Observation vector coefficients
-    pub observation: DVector<f64>,
+    /// Observation vector coefficients (complex in rotated basis)
+    pub observation: DVector<Complex64>,
     
-    /// Process noise covariance matrix
-    pub process_noise_cov: DMatrix<f64>,
+    /// Input vector for white noise driving (complex in rotated basis)
+    pub input_vector: DVector<Complex64>,
     
     /// State dimension (equals p)
     pub state_dim: usize,
     
-    /// Stationary state covariance
-    pub stationary_cov: DMatrix<f64>,
+    /// Stationary state covariance (complex in rotated basis)
+    pub stationary_cov: DMatrix<Complex64>,
 }
 
 impl StateSpaceModel {
@@ -425,19 +426,19 @@ impl StateSpaceModel {
             return Err(CarmaError::NonStationaryError);
         }
         
+        // Compute input vector J from Vandermonde matrix solution
+        let input_vector = math_compute_input_vector(&lambda)?;
+        
         // Compute observation vector from MA coefficients
         let observation = math_compute_observation_vector(&params.ma_coeffs, &lambda)?;
         
-        // Compute process noise covariance
-        let process_noise_cov = math_compute_process_noise_covariance(&lambda, params.sigma)?;
-        
-        // Compute stationary covariance
-        let stationary_cov = math_compute_stationary_covariance(&lambda, &process_noise_cov)?;
+        // Compute stationary covariance using correct Lyapunov equation
+        let stationary_cov = math_compute_stationary_covariance(&lambda, &input_vector, params.sigma)?;
         
         Ok(StateSpaceModel {
             lambda,
             observation,
-            process_noise_cov,
+            input_vector,
             state_dim: p,
             stationary_cov,
         })
@@ -447,6 +448,6 @@ impl StateSpaceModel {
 use crate::carma::math::{
     compute_ar_roots as math_compute_ar_roots,
     compute_observation_vector as math_compute_observation_vector, 
-    compute_process_noise_covariance as math_compute_process_noise_covariance,
+    compute_input_vector as math_compute_input_vector,
     compute_stationary_covariance as math_compute_stationary_covariance,
 };
