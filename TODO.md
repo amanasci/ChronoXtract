@@ -2,6 +2,30 @@
 
 This is list of features to implement.
 
+## Topological Features (TDA) — Completed ✅
+
+- [x] **Takens delay-coordinate embedding** (`takens_embedding`)
+  - Configurable dimension, delay, stride, and optional z-score normalisation
+  - Validates inputs; clear errors for too-short series or zero parameters
+  - Returns 2-D numpy array
+- [x] **Persistent homology summaries** (`persistent_homology_summary`)
+  - H0 via union-find (always fast)
+  - H0+H1 via boundary-matrix reduction (Edelsbrunner–Zomorodian 2002) over ℤ/2ℤ
+  - Returns n_pairs, max/total/mean persistence, persistence entropy, n_essential
+- [x] **Betti curve features** (`betti_curve_features`)
+  - Samples β_0 and β_1 curves at configurable resolution
+  - Returns AUC, peak, mean for each curve
+- [x] **Persistence landscape features** (`persistence_landscape_features`)
+  - Computes λ_k(t) = k-th largest tent function per filtration value
+  - Returns L1 norm, L2 norm, peak, mean per layer and homology dimension
+- [x] **Combined pipeline** (`topological_features`)
+  - Single-call full pipeline: embedding → homology → all features
+  - Returns 38 scalar features in one dict
+- [x] Rust unit tests (31 tests in `src/topology/`)
+- [x] Python integration tests (50 tests in `tests/test_topology.py`)
+- [x] Example script (`docs/examples/topology_analysis.py`)
+- [x] API documentation added to `docs/api_reference.md`
+
 ## Features to extract
 
     - [X] Mean, Median, Mode, Variance, Standard Deviation 

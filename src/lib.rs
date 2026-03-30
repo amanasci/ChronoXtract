@@ -13,6 +13,7 @@ mod entropy;
 mod seasonality;
 mod shape;
 mod carma;
+mod topology;
 
 
 /// Calculate a comprehensive statistical summary of a time series.
@@ -238,6 +239,13 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_class::<carma::types::CarmaOrderResult>()?;
     m.add_class::<carma::types::CarmaPrediction>()?;
     m.add_class::<carma::kalman::KalmanResult>()?;
+
+    // Topology functions
+    m.add_function(wrap_pyfunction!(topology::takens_embedding, m)?)?;
+    m.add_function(wrap_pyfunction!(topology::topological_features, m)?)?;
+    m.add_function(wrap_pyfunction!(topology::persistent_homology_summary, m)?)?;
+    m.add_function(wrap_pyfunction!(topology::betti_curve_features, m)?)?;
+    m.add_function(wrap_pyfunction!(topology::persistence_landscape_features, m)?)?;
 
     Ok(())
 }
