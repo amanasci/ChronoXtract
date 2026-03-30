@@ -1057,3 +1057,206 @@ When errors occur, functions will raise appropriate Python exceptions with descr
 - Functions are thread-safe and can be used in parallel processing
 - Input validation is performed efficiently without significant overhead
 - For very large datasets (>1M points), consider using streaming algorithms where available
+---
+
+## Topological Features
+
+ChronoXtract includes a full Topological Data Analysis (TDA) pipeline for scalar time series, exposing four complementary function families.
+
+### Mathematical Background
+
+Topological features characterise the *shape* of the attractor reconstructed from a time series via Takens' embedding theorem:
+
+**Takens' theorem** (1981): Under generic conditions a scalar observable `x(t)` of a dynamical system can be used to reconstruct the system's full attractor via the delay-coordinate map `x[i] ↦ (x[i], x[i+τ], …, x[i+(d-1)τ])`.
+
+**Persistent homology** then characterises that attractor by tracking topological features (connected components, loops) that are born and die as a scale parameter ε grows.
+
+---
+
+### `takens_embedding(time_series, dimension, delay=1, stride=1, normalize=False)`
+
+Compute the Takens delay-coordinate embedding of a 1-D time series.
+
+**Parameters:**
+- `time_series` (array-like): Input scalar time series.
+- `dimension` (int): Embedding dimension d ≥ 1.
+- `delay` (int): Time delay τ ≥ 1 (default 1).
+- `stride` (int): Step between successive windows (default 1).
+- `normalize` (bool): Z-score normalise each embedded vector (default False).
+
+**Returns:**
+- `np.ndarray` of shape `(n_points, dimension)` where `n_points = ⌊(n − (d-1)·τ − 1)/stride⌋ + 1`.
+
+**Errors:**
+- `ValueError` if `time_series` is empty, any parameter is zero, or the series is too short.
+
+**Example:**
+```python
+import numpy as np
+import chronoxtract as ct
+
+ts = np.sin(np.linspace(0, 4 * np.pi, 200))
+pts = ct.takens_embedding(ts, dimension=3, delay=5)
+print(pts.shape)  # (190, 3)
+```
+
+---
+
+### `topological_features(time_series, dimension=2, delay=1, stride=1, normalize=False, max_scale=None, max_h1_points=50, n_betti_samples=50, n_landscape_layers=3, n_landscape_samples=50)`
+
+Compute a comprehensive dictionary of topological features from a 1-D time series in a single call.
+
+Equivalent to calling `takens_embedding` followed by `persistent_homology_summary`, `betti_curve_features`, and `persistence_landscape_features` and merging the results.
+
+**Parameters:**
+- `time_series` (array-like): Input 1-D time series.
+- `dimension` (int): Embedding dimension (default 2).
+- `delay` (int): Time delay (default 1).
+- `stride` (int): Embedding stride (default 1).
+- `normalize` (bool): Normalise embedded vectors (default False).
+- `max_scale` (float, optional): Filtration cutoff.
+- `max_h1_points` (int): H0-only threshold for large clouds (default 50).
+- `n_betti_samples` (int): Betti curve sample count (default 50).
+- `n_landscape_layers` (int): Number of landscape layers (default 3).
+- `n_landscape_samples` (int): Sample count for landscape (default 50).
+
+**Returns:**
+Dictionary containing all features from `persistent_homology_summary`, `betti_curve_features`, and `persistence_landscape_features`, plus:
+- `n_embedding_points`: Number of embedded points.
+- `embedding_dim`: Embedding dimension.
+- `h1_computed`: 1.0 if H1 was computed, 0.0 if H0-only mode was used.
+
+**Example:**
+```python
+import numpy as np
+import chronoxtract as ct
+
+np.random.seed(0)
+ts = np.cumsum(np.random.randn(300))
+feats = ct.topological_features(ts, dimension=3, delay=2, stride=3, max_h1_points=50)
+print(feats['n_pairs_h0'], feats['betti_0_auc'])
+```
+
+---
+
+### `persistent_homology_summary(points, max_scale=None, max_h1_points=50)`
+
+Compute scalar summary statistics of the persistence diagram for a 2-D point cloud.
+
+Uses Vietoris–Rips filtration with:
+- **H0 (connected components)**: always computed via union-find.
+- **H1 (loops)**: computed via boundary-matrix reduction if `n_points ≤ max_h1_points`.
+
+**Parameters:**
+- `points` (np.ndarray): 2-D array of shape `(n_points, ambient_dim)`.
+- `max_scale` (float, optional): Upper bound on filtration values.
+- `max_h1_points` (int): Threshold for H0-only mode (default 50).
+
+**Returns:**
+Dictionary with keys:
+- `n_pairs_h{k}`: Number of finite persistence pairs in dimension k.
+- `max_persistence_h{k}`: Maximum (death − birth) for finite pairs.
+- `total_persistence_h{k}`: Sum of persistence lengths.
+- `mean_persistence_h{k}`: Mean persistence length.
+- `persistence_entropy_h{k}`: Shannon entropy of normalised persistence lengths.
+- `n_essential_h{k}`: Number of essential (never-dying) classes.
+- `max_finite_scale`: Largest finite filtration value.
+
+For k ∈ {0, 1}.
+
+**Computational note:**
+H1 computation builds a Vietoris–Rips complex up to dimension 2 (triangles).
+Triangle count is O(n³) in the number of points. For n ≤ 50 this is fast;
+for larger clouds, only H0 is computed.
+
+**Example:**
+```python
+import numpy as np
+import chronoxtract as ct
+
+# Circle: 1 connected component, 1 loop
+theta = np.linspace(0, 2 * np.pi, 30, endpoint=False)
+pts = np.column_stack([np.cos(theta), np.sin(theta)])
+feats = ct.persistent_homology_summary(pts, max_h1_points=35)
+print(feats['n_pairs_h1'])  # 1
+```
+
+---
+
+### `betti_curve_features(points, n_samples=50, max_scale=None, max_h1_points=50)`
+
+Compute Betti-curve scalar summaries for a 2-D point cloud.
+
+The Betti-k curve is β_k(t) = #{pairs (b,d) | b ≤ t < d} (essential pairs always contribute).
+
+**Parameters:**
+- `points` (np.ndarray): 2-D array `(n_points, ambient_dim)`.
+- `n_samples` (int): Number of sample points along the filtration axis (default 50).
+- `max_scale` (float, optional): Upper bound on the sampled range.
+- `max_h1_points` (int): Threshold for H0-only mode (default 50).
+
+**Returns:**
+Dictionary with:
+- `betti_{k}_auc`: Trapezoidal area under the Betti-k curve (k ∈ {0,1}).
+- `betti_{k}_peak`: Maximum value of the Betti-k curve.
+- `betti_{k}_mean`: Mean value of the Betti-k curve.
+
+**Example:**
+```python
+import numpy as np
+import chronoxtract as ct
+
+theta = np.linspace(0, 2 * np.pi, 30, endpoint=False)
+pts = np.column_stack([np.cos(theta), np.sin(theta)])
+feats = ct.betti_curve_features(pts, n_samples=100, max_h1_points=35)
+print(feats['betti_1_auc'])   # positive: persistent loop
+print(feats['betti_1_peak'])  # ≥ 1.0
+```
+
+---
+
+### `persistence_landscape_features(points, n_layers=3, n_samples=50, max_scale=None, max_h1_points=50)`
+
+Compute persistence landscape scalar summaries for a 2-D point cloud.
+
+The λ-th landscape layer is the λ-th largest tent-function value at each scale:
+`f_{b,d}(t) = max(0, min(t−b, d−t))`
+
+**Parameters:**
+- `points` (np.ndarray): 2-D array `(n_points, ambient_dim)`.
+- `n_layers` (int): Number of landscape layers (default 3).
+- `n_samples` (int): Sample points per layer (default 50).
+- `max_scale` (float, optional): Upper bound on the sampled range.
+- `max_h1_points` (int): Threshold for H0-only mode (default 50).
+
+**Returns:**
+Dictionary with keys `landscape_h{k}_l{l}_{norm}` for:
+- k ∈ {0, 1}: homology dimension.
+- l ∈ {1…n_layers}: landscape layer (1-indexed).
+- norm ∈ {l1, l2, peak, mean}: summary statistic.
+
+**Example:**
+```python
+import numpy as np
+import chronoxtract as ct
+
+rng = np.random.default_rng(42)
+ts = rng.standard_normal(100)
+pts = ct.takens_embedding(ts, dimension=2, delay=1, stride=2)
+feats = ct.persistence_landscape_features(pts, n_layers=2, n_samples=50)
+print(feats['landscape_h0_l1_l1'])   # L1 norm of first landscape layer
+print(feats['landscape_h0_l1_peak']) # Peak of first landscape layer
+```
+
+---
+
+### Limitations and best practices
+
+| Concern | Recommendation |
+|---------|----------------|
+| H1 computation cost | Keep `n_points ≤ max_h1_points` (default 50). Use `stride` to subsample. |
+| Choosing `dimension` | Use 2–4 for typical attractors; higher dimensions increase point-cloud ambient space. |
+| Choosing `delay` | Use the first minimum of the autocorrelation function or mutual information. |
+| Choosing `stride` | `stride > 1` reduces embedding points, trading resolution for speed. |
+| Essential H0 class | One essential H0 class is always present (last surviving component). |
+| Noise robustness | Topological features capture large-scale geometric structure and are moderately robust to small perturbations. |
