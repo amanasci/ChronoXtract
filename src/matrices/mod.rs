@@ -1,9 +1,10 @@
-use numpy::ndarray::{Array1, Array2, Axis, s};
+use numpy::ndarray::{Array2, ArrayView1};
 use numpy::{IntoPyArray, PyArray2, PyReadonlyArray1};
 use pyo3::exceptions::PyValueError;
 use pyo3::prelude::*;
+use rayon::prelude::*;
 
-fn validate_series(data: &Array1<f64>) -> PyResult<()> {
+fn validate_series(data: ArrayView1<'_, f64>) -> PyResult<()> {
     if data.is_empty() {
         return Err(PyValueError::new_err("Input time series cannot be empty"));
     }
@@ -15,7 +16,7 @@ fn validate_series(data: &Array1<f64>) -> PyResult<()> {
     Ok(())
 }
 
-fn min_max(data: &Array1<f64>) -> (f64, f64) {
+fn min_max(data: ArrayView1<'_, f64>) -> (f64, f64) {
     data.iter()
         .fold((f64::INFINITY, f64::NEG_INFINITY), |(min_v, max_v), &x| {
             (min_v.min(x), max_v.max(x))
@@ -48,8 +49,8 @@ pub fn time_delay_embedding<'py>(
     time_series: PyReadonlyArray1<'py, f64>,
     window_length: usize,
 ) -> PyResult<Py<PyArray2<f64>>> {
-    let data = time_series.as_array().to_owned();
-    validate_series(&data)?;
+    let data = time_series.as_array();
+    validate_series(data)?;
 
     if window_length == 0 {
         return Err(PyValueError::new_err("window_length must be greater than 0"));
@@ -61,12 +62,29 @@ pub fn time_delay_embedding<'py>(
     }
 
     let n_rows = data.len() - window_length + 1;
-    let mut hankel = Array2::<f64>::zeros((n_rows, window_length));
-    for i in 0..n_rows {
-        hankel
-            .slice_mut(s![i, ..])
-            .assign(&data.slice(s![i..i + window_length]));
+    let mut hankel = vec![0.0; n_rows * window_length];
+
+    if let Some(slice) = data.as_slice() {
+        if n_rows >= 512 {
+            hankel
+                .par_chunks_mut(window_length)
+                .enumerate()
+                .for_each(|(i, row)| row.copy_from_slice(&slice[i..i + window_length]));
+        } else {
+            for (i, row) in hankel.chunks_mut(window_length).enumerate() {
+                row.copy_from_slice(&slice[i..i + window_length]);
+            }
+        }
+    } else {
+        for i in 0..n_rows {
+            for j in 0..window_length {
+                hankel[i * window_length + j] = data[i + j];
+            }
+        }
     }
+
+    let hankel = Array2::from_shape_vec((n_rows, window_length), hankel)
+        .map_err(|e| PyValueError::new_err(format!("Failed to build embedding matrix: {e}")))?;
 
     Ok(hankel.into_pyarray(py).to_owned())
 }
@@ -98,25 +116,47 @@ pub fn gramian_angular_summation_field<'py>(
     py: Python<'py>,
     time_series: PyReadonlyArray1<'py, f64>,
 ) -> PyResult<Py<PyArray2<f64>>> {
-    let data = time_series.as_array().to_owned();
-    validate_series(&data)?;
+    let data = time_series.as_array();
+    validate_series(data)?;
 
-    let (min, max) = min_max(&data);
+    let (min, max) = min_max(data);
     let range = max - min;
+    let n = data.len();
 
-    let normalized = if range <= f64::EPSILON {
-        Array1::<f64>::zeros(data.len())
+    let normalized: Vec<f64> = if range <= f64::EPSILON {
+        vec![0.0; n]
     } else {
-        data.mapv(|x| (2.0 * (x - min) / range - 1.0).clamp(-1.0, 1.0))
+        data.iter()
+            .map(|&x| (2.0 * (x - min) / range - 1.0).clamp(-1.0, 1.0))
+            .collect()
     };
 
-    let sin_component = normalized.mapv(|x| (1.0 - x * x).max(0.0).sqrt());
-    let cos_i = normalized.view().insert_axis(Axis(1));
-    let cos_j = normalized.view().insert_axis(Axis(0));
-    let sin_i = sin_component.view().insert_axis(Axis(1));
-    let sin_j = sin_component.view().insert_axis(Axis(0));
+    let sin_component: Vec<f64> = normalized
+        .iter()
+        .map(|&x| (1.0 - x * x).max(0.0).sqrt())
+        .collect();
 
-    let gasf = (&cos_i * &cos_j) - (&sin_i * &sin_j);
+    let mut gasf = vec![0.0; n * n];
+    if n >= 128 {
+        gasf.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
+            let ci = normalized[i];
+            let si = sin_component[i];
+            for j in 0..n {
+                row[j] = ci * normalized[j] - si * sin_component[j];
+            }
+        });
+    } else {
+        for (i, row) in gasf.chunks_mut(n).enumerate() {
+            let ci = normalized[i];
+            let si = sin_component[i];
+            for j in 0..n {
+                row[j] = ci * normalized[j] - si * sin_component[j];
+            }
+        }
+    }
+
+    let gasf = Array2::from_shape_vec((n, n), gasf)
+        .map_err(|e| PyValueError::new_err(format!("Failed to build GASF matrix: {e}")))?;
     Ok(gasf.into_pyarray(py).to_owned())
 }
 
@@ -149,15 +189,15 @@ pub fn markov_transition_field<'py>(
     time_series: PyReadonlyArray1<'py, f64>,
     num_bins: usize,
 ) -> PyResult<Py<PyArray2<f64>>> {
-    let data = time_series.as_array().to_owned();
-    validate_series(&data)?;
+    let data = time_series.as_array();
+    validate_series(data)?;
 
     if num_bins < 2 {
         return Err(PyValueError::new_err("num_bins must be at least 2"));
     }
 
     let n = data.len();
-    let (min, max) = min_max(&data);
+    let (min, max) = min_max(data);
     let range = max - min;
 
     let bins: Vec<usize> = if range <= f64::EPSILON {
@@ -175,26 +215,43 @@ pub fn markov_transition_field<'py>(
             .collect()
     };
 
-    let mut transition = Array2::<f64>::zeros((num_bins, num_bins));
+    let mut transition = vec![0.0; num_bins * num_bins];
     for t in 0..n.saturating_sub(1) {
         let from = bins[t];
         let to = bins[t + 1];
-        transition[[from, to]] += 1.0;
+        transition[from * num_bins + to] += 1.0;
     }
 
     for i in 0..num_bins {
-        let row_sum: f64 = transition.row(i).sum();
+        let row_start = i * num_bins;
+        let row_end = row_start + num_bins;
+        let row_sum: f64 = transition[row_start..row_end].iter().sum();
         if row_sum > 0.0 {
-            transition.row_mut(i).mapv_inplace(|v| v / row_sum);
+            for value in &mut transition[row_start..row_end] {
+                *value /= row_sum;
+            }
         }
     }
 
-    let mut mtf = Array2::<f64>::zeros((n, n));
-    for i in 0..n {
-        for j in 0..n {
-            mtf[[i, j]] = transition[[bins[i], bins[j]]];
+    let mut mtf = vec![0.0; n * n];
+    if n >= 128 {
+        mtf.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
+            let row_offset = bins[i] * num_bins;
+            for j in 0..n {
+                row[j] = transition[row_offset + bins[j]];
+            }
+        });
+    } else {
+        for (i, row) in mtf.chunks_mut(n).enumerate() {
+            let row_offset = bins[i] * num_bins;
+            for j in 0..n {
+                row[j] = transition[row_offset + bins[j]];
+            }
         }
     }
+
+    let mtf = Array2::from_shape_vec((n, n), mtf)
+        .map_err(|e| PyValueError::new_err(format!("Failed to build MTF matrix: {e}")))?;
 
     Ok(mtf.into_pyarray(py).to_owned())
 }
