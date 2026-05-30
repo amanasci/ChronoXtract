@@ -13,6 +13,7 @@ mod entropy;
 mod seasonality;
 mod shape;
 mod carma;
+mod matrices;
 
 
 /// Calculate a comprehensive statistical summary of a time series.
@@ -221,6 +222,11 @@ fn chronoxtract(_py: Python, m: &PyModule) -> PyResult<()> {
     m.add_function(wrap_pyfunction!(shape::variability_features, m)?)?;
     m.add_function(wrap_pyfunction!(shape::turning_points, m)?)?;
     m.add_function(wrap_pyfunction!(shape::energy_distribution, m)?)?;
+
+    // Matrix transformation functions
+    m.add_function(wrap_pyfunction!(matrices::time_delay_embedding, m)?)?;
+    m.add_function(wrap_pyfunction!(matrices::gramian_angular_summation_field, m)?)?;
+    m.add_function(wrap_pyfunction!(matrices::markov_transition_field, m)?)?;
 
     // CARMA functions - High-performance implementation
     m.add_function(wrap_pyfunction!(carma::kalman::carma_kalman_filter, m)?)?;

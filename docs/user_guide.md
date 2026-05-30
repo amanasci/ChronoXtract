@@ -15,9 +15,10 @@ Welcome to the comprehensive user guide for ChronoXtract! This guide will help y
 9. [Entropy and Information Theory](#entropy-and-information-theory)
 10. [Seasonality and Trend Analysis](#seasonality-and-trend-analysis)
 11. [Shape and Peak Features](#shape-and-peak-features)
-12. [Best Practices](#best-practices)
-13. [Performance Tips](#performance-tips)
-14. [Real-World Applications](#real-world-applications)
+12. [Matrix Transformations](#matrix-transformations)
+13. [Best Practices](#best-practices)
+14. [Performance Tips](#performance-tips)
+15. [Real-World Applications](#real-world-applications)
 
 ---
 
@@ -684,6 +685,47 @@ variability = ct.variability_features(signal.tolist())
 turning_points = ct.turning_points(signal.tolist())
 print(f"Turning points: {turning_points.get('count', 0)}")
 ```
+
+---
+
+## Matrix Transformations
+
+ChronoXtract includes image-like matrix encodings for time-series modeling pipelines.
+
+### Time-Delay Embedding (Hankel Matrix)
+
+```python
+import numpy as np
+import chronoxtract as ct
+
+series = np.array([1.0, 2.0, 3.0, 4.0, 5.0])
+hankel = ct.time_delay_embedding(series, 3)
+# [[1, 2, 3],
+#  [2, 3, 4],
+#  [3, 4, 5]]
+```
+
+Mathematically, `H[i, j] = x[i + j]`.
+
+### Gramian Angular Summation Field (GASF)
+
+```python
+gasf = ct.gramian_angular_summation_field(series)
+print(gasf.shape)  # (N, N)
+```
+
+For normalized `x' in [-1, 1]` and `phi_i = arccos(x'_i)`, GASF is
+`G[i, j] = cos(phi_i + phi_j)`.
+
+### Markov Transition Field (MTF)
+
+```python
+mtf = ct.markov_transition_field(series, num_bins=4)
+print(mtf.shape)  # (N, N)
+```
+
+MTF discretizes samples into bins, estimates transition probabilities between
+bin states, then maps each timestamp pair `(i, j)` to `P[q_i, q_j]`.
 
 ---
 
