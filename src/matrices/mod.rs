@@ -23,6 +23,11 @@ fn min_max(data: ArrayView1<'_, f64>) -> (f64, f64) {
         })
 }
 
+fn has_degenerate_range(min: f64, max: f64) -> bool {
+    let scale = min.abs().max(max.abs()).max(1.0);
+    (max - min).abs() <= 1e-12 * scale
+}
+
 /// Build a Hankel-style time-delay embedding matrix from a 1D time series.
 ///
 /// Given a sequence `x_0, x_1, ..., x_{N-1}` and window length `L`, this
@@ -65,6 +70,8 @@ pub fn time_delay_embedding<'py>(
     let mut hankel = vec![0.0; n_rows * window_length];
 
     if let Some(slice) = data.as_slice() {
+        // Parallelization threshold tuned from local benchmarks to avoid
+        // threadpool overhead for small inputs.
         if n_rows >= 512 {
             hankel
                 .par_chunks_mut(window_length)
@@ -123,7 +130,7 @@ pub fn gramian_angular_summation_field<'py>(
     let range = max - min;
     let n = data.len();
 
-    let normalized: Vec<f64> = if range <= f64::EPSILON {
+    let normalized: Vec<f64> = if has_degenerate_range(min, max) {
         vec![0.0; n]
     } else {
         data.iter()
@@ -131,12 +138,15 @@ pub fn gramian_angular_summation_field<'py>(
             .collect()
     };
 
+    // sin(phi) where phi = arccos(x) and x is the normalized cosine component.
     let sin_component: Vec<f64> = normalized
         .iter()
         .map(|&x| (1.0 - x * x).max(0.0).sqrt())
         .collect();
 
     let mut gasf = vec![0.0; n * n];
+    // Parallelization threshold tuned from local benchmarks to avoid
+    // threadpool overhead for small matrices.
     if n >= 128 {
         gasf.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
             let ci = normalized[i];
@@ -200,7 +210,7 @@ pub fn markov_transition_field<'py>(
     let (min, max) = min_max(data);
     let range = max - min;
 
-    let bins: Vec<usize> = if range <= f64::EPSILON {
+    let bins: Vec<usize> = if has_degenerate_range(min, max) {
         vec![0; n]
     } else {
         data.iter()
@@ -234,6 +244,8 @@ pub fn markov_transition_field<'py>(
     }
 
     let mut mtf = vec![0.0; n * n];
+    // Parallelization threshold tuned from local benchmarks to avoid
+    // threadpool overhead for small matrices.
     if n >= 128 {
         mtf.par_chunks_mut(n).enumerate().for_each(|(i, row)| {
             let row_offset = bins[i] * num_bins;
