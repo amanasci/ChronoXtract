@@ -15,6 +15,13 @@ fn validate_series(data: &Array1<f64>) -> PyResult<()> {
     Ok(())
 }
 
+fn min_max(data: &Array1<f64>) -> (f64, f64) {
+    data.iter()
+        .fold((f64::INFINITY, f64::NEG_INFINITY), |(min_v, max_v), &x| {
+            (min_v.min(x), max_v.max(x))
+        })
+}
+
 /// Build a Hankel-style time-delay embedding matrix from a 1D time series.
 ///
 /// Given a sequence `x_0, x_1, ..., x_{N-1}` and window length `L`, this
@@ -94,8 +101,7 @@ pub fn gramian_angular_summation_field<'py>(
     let data = time_series.as_array().to_owned();
     validate_series(&data)?;
 
-    let min = data.iter().fold(f64::INFINITY, |a, &b| a.min(b));
-    let max = data.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+    let (min, max) = min_max(&data);
     let range = max - min;
 
     let normalized = if range <= f64::EPSILON {
@@ -151,8 +157,7 @@ pub fn markov_transition_field<'py>(
     }
 
     let n = data.len();
-    let min = data.iter().fold(f64::INFINITY, |a, &b| a.min(b));
-    let max = data.iter().fold(f64::NEG_INFINITY, |a, &b| a.max(b));
+    let (min, max) = min_max(&data);
     let range = max - min;
 
     let bins: Vec<usize> = if range <= f64::EPSILON {
