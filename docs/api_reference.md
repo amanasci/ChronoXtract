@@ -14,6 +14,7 @@ This document provides detailed information about all functions available in Chr
 - [Entropy and Information Theory](#entropy-and-information-theory)
 - [Seasonality and Trend Analysis](#seasonality-and-trend-analysis)
 - [Shape and Peak Features](#shape-and-peak-features)
+- [Matrix Transformations](#matrix-transformations)
 - [Peak Detection](#peak-detection)
 
 ---
@@ -984,6 +985,61 @@ Calculates the energy distribution characteristics of a time series.
 
 **Returns:**
 - `dict`: Dictionary containing energy distribution measures
+
+---
+
+## Matrix Transformations
+
+### `time_delay_embedding(time_series, window_length)`
+
+Constructs a Hankel-style time-delay embedding matrix from a 1D series.
+
+For series `x` and window length `L`, the output matrix `H` is:
+
+- `H[i, j] = x[i + j]`
+- Shape: `(N - L + 1, L)`
+
+**Parameters:**
+- `time_series` (List[float] or numpy.ndarray): Input time series
+- `window_length` (int): Embedding window length (`L > 0`, `L <= N`)
+
+**Returns:**
+- `numpy.ndarray`: 2D embedding matrix
+
+### `gramian_angular_summation_field(time_series)`
+
+Computes the Gramian Angular Summation Field (GASF) matrix.
+
+1. Normalize `x` to `x' in [-1, 1]` via min-max scaling.
+2. Let `phi_i = arccos(x'_i)`.
+3. Compute:
+   - `G[i, j] = cos(phi_i + phi_j)`
+
+Equivalent computational form:
+- `G[i, j] = x'_i x'_j - sqrt(1 - x'^2_i) sqrt(1 - x'^2_j)`
+
+**Parameters:**
+- `time_series` (List[float] or numpy.ndarray): Input time series
+
+**Returns:**
+- `numpy.ndarray`: `N x N` GASF matrix
+
+### `markov_transition_field(time_series, num_bins)`
+
+Computes the Markov Transition Field (MTF) matrix.
+
+1. Discretize data into `Q` bins.
+2. Estimate transition matrix `P` where:
+   - `P[a, b] = count(q_t = a, q_{t+1} = b) / count(q_t = a)`
+3. Build:
+   - `M[i, j] = P[q_i, q_j]`
+
+**Parameters:**
+- `time_series` (List[float] or numpy.ndarray): Input time series
+- `num_bins` (int): Number of bins `Q` (`Q >= 2`)
+
+**Returns:**
+- `numpy.ndarray`: `N x N` MTF matrix
 
 ---
 
